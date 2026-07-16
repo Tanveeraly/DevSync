@@ -50,7 +50,7 @@ export default function LoginPage() {
           <Link href="/" className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white font-black shadow-[0_0_15px_rgba(79,70,229,0.5)] mb-4">
             DS
           </Link>
-          <h2 className="text-xl font-bold text-white">Welcome back</h2>
+          <h2 className="text-xl font-bold text-white">Welcome back {username}</h2>
           <p className="text-xs text-zinc-500 mt-1">Sign in to sync your developer console</p>
         </div>
 
