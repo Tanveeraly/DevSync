@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { api } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
+import CreateProjectModal from '@/components/ui/CreateProjectModal';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -17,6 +18,7 @@ export default function AppShell({ children, title }: AppShellProps) {
   const [user, setUser] = useState<any>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreateProject, setShowCreateProject] = useState(false);
 
   useEffect(() => {
     async function loadSession() {
@@ -46,6 +48,13 @@ export default function AppShell({ children, title }: AppShellProps) {
     loadSession();
   }, [router]);
 
+  // Refresh projects list after creating a new one
+  const handleProjectCreated = (project: any) => {
+    setProjects((prev) => [...prev, project]);
+    // Navigate to the new board
+    router.push(`/board/${project.slug}`);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#060608] text-zinc-400">
@@ -62,7 +71,11 @@ export default function AppShell({ children, title }: AppShellProps) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] font-sans">
       {/* Sidebar Navigation */}
-      <Sidebar user={user} projects={projects} />
+      <Sidebar
+        user={user}
+        projects={projects}
+        onCreateProject={() => setShowCreateProject(true)}
+      />
 
       {/* Main Content Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -76,6 +89,13 @@ export default function AppShell({ children, title }: AppShellProps) {
           </div>
         </main>
       </div>
+
+      {/* Global Create Project Modal */}
+      <CreateProjectModal
+        open={showCreateProject}
+        onClose={() => setShowCreateProject(false)}
+        onCreated={handleProjectCreated}
+      />
     </div>
   );
 }

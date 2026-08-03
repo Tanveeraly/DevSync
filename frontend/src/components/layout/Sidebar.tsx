@@ -9,19 +9,19 @@ import {
   Settings, 
   ChevronLeft, 
   ChevronRight, 
-  FolderDot
+  FolderDot,
+  Plus
 } from 'lucide-react';
-import { GithubIcon as Github } from '@/components/ui/icons';
 import { cn } from '@/lib/utils';
-import { sampleProjects } from '@/data/sample';
 
 interface SidebarProps {
   className?: string;
   user?: any;
   projects?: any[];
+  onCreateProject?: () => void;
 }
 
-export default function Sidebar({ className, user, projects = [] }: SidebarProps) {
+export default function Sidebar({ className, user, projects = [], onCreateProject }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
@@ -99,8 +99,19 @@ export default function Sidebar({ className, user, projects = [] }: SidebarProps
         {/* Projects Section */}
         <div>
           {!collapsed && (
-            <div className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-              Active Projects
+            <div className="px-3 mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                Active Projects
+              </span>
+              {onCreateProject && (
+                <button
+                  onClick={onCreateProject}
+                  title="New Project"
+                  className="flex items-center justify-center h-5 w-5 rounded text-zinc-600 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+                >
+                  <Plus size={13} />
+                </button>
+              )}
             </div>
           )}
           <div className="space-y-1">
@@ -135,8 +146,17 @@ export default function Sidebar({ className, user, projects = [] }: SidebarProps
               })
             ) : (
               !collapsed && (
-                <div className="px-3 py-2 text-xs text-zinc-600 italic">
-                  No projects active.
+                <div className="px-3 py-3">
+                  <p className="text-xs text-zinc-600 italic mb-2">No projects yet.</p>
+                  {onCreateProject && (
+                    <button
+                      onClick={onCreateProject}
+                      className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                    >
+                      <Plus size={12} />
+                      Create first project
+                    </button>
+                  )}
                 </div>
               )
             )}

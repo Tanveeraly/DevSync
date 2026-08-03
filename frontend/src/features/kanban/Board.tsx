@@ -348,6 +348,7 @@ export default function Board() {
               id={col.id}
               title={col.title}
               issues={col.issues}
+              users={users}
               activeEditingIssues={activeEditingIssues}
               onCardClick={handleCardClick}
             />

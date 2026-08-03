@@ -13,18 +13,38 @@ import {
 } from 'recharts';
 import { sampleContributorStats } from '@/data/sample';
 
-export default function ContributorGraph() {
+interface ContributorGraphProps {
+  data?: any[];
+}
+
+export default function ContributorGraph({ data }: ContributorGraphProps) {
+  const chartData = data && data.length > 0 ? data : sampleContributorStats;
+  const isLive = data && data.length > 0;
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#0f0f12] p-5 shadow-sm">
-      <div className="mb-4">
-        <h3 className="text-sm font-semibold text-white">Team Contribution</h3>
-        <p className="text-[11px] text-zinc-500">Commits, PRs, and reviews by team member</p>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-white">Team Contribution</h3>
+            {isLive ? (
+              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                Live GitHub Data
+              </span>
+            ) : (
+              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                Sample Data
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-500">Commits, PRs, and reviews by team member</p>
+        </div>
       </div>
 
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
-            data={sampleContributorStats}
+            data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             barSize={16}
           >

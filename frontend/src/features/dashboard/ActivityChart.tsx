@@ -8,18 +8,52 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
 import { sampleCommitStats } from '@/data/sample';
+import { Link2 } from 'lucide-react';
 
-export default function ActivityChart() {
+interface ActivityChartProps {
+  data?: any[];
+  error?: string | null;
+  onLinkGithub?: () => void;
+}
+
+export default function ActivityChart({ data, error, onLinkGithub }: ActivityChartProps) {
+  const chartData = data && data.length > 0 ? data : sampleCommitStats;
+  const isLive = data && data.length > 0 && !error;
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#0f0f12] p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-white">Repository Activity</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-white">Repository Activity</h3>
+            {isLive ? (
+              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                Live GitHub Data
+              </span>
+            ) : (
+              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                Sample Data
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-zinc-500">Commits, PRs, and resolved issues over the past week</p>
+          {error && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] text-amber-400 font-medium">{error}</span>
+              {onLinkGithub && (
+                <button
+                  onClick={onLinkGithub}
+                  className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 transition-colors"
+                >
+                  <Link2 size={11} />
+                  Link Repo URL
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <span className="flex items-center gap-1.5 text-[10px] text-zinc-400">
@@ -37,7 +71,7 @@ export default function ActivityChart() {
       <div className="h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={sampleCommitStats}
+            data={chartData}
             margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
           >
             <defs>
