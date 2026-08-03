@@ -11,6 +11,7 @@ from app.schemas.project import (
     ProjectRead,
     ProjectUpdate,
 )
+from app.services.github_service import get_github_stats
 from app.services.project_service import (
     add_project_member,
     check_user_membership,
@@ -65,6 +66,14 @@ async def get_project(session: DBSession, slug: str, current_user: CurrentUser):
     project = await get_project_by_slug(session, slug)
     await check_access(session, project.id, current_user.id)
     return project
+
+
+@router.get("/{slug}/github-stats")
+async def get_project_github_stats(session: DBSession, slug: str, current_user: CurrentUser):
+    """Get real-time GitHub repository statistics (commits, PRs, contributors)."""
+    project = await get_project_by_slug(session, slug)
+    await check_access(session, project.id, current_user.id)
+    return await get_github_stats(project.github_repo_url)
 
 
 @router.patch("/{slug}", response_model=ProjectRead)

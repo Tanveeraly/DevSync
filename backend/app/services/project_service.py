@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import MemberRole, Project, ProjectMember
@@ -43,6 +44,7 @@ async def list_user_projects(session: AsyncSession, user_id: uuid.UUID) -> list[
     # Select projects where user is a member
     stmt = (
         select(Project)
+        .options(selectinload(Project.owner))
         .join(ProjectMember)
         .where(ProjectMember.user_id == user_id)
     )
@@ -51,7 +53,11 @@ async def list_user_projects(session: AsyncSession, user_id: uuid.UUID) -> list[
 
 
 async def get_project_by_slug(session: AsyncSession, slug: str) -> Project:
-    result = await session.execute(select(Project).where(Project.slug == slug))
+    result = await session.execute(
+        select(Project)
+        .options(selectinload(Project.owner))
+        .where(Project.slug == slug)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(
@@ -62,7 +68,11 @@ async def get_project_by_slug(session: AsyncSession, slug: str) -> Project:
 
 
 async def update_project(session: AsyncSession, project_id: uuid.UUID, data: ProjectUpdate) -> Project:
-    result = await session.execute(select(Project).where(Project.id == project_id))
+    result = await session.execute(
+        select(Project)
+        .options(selectinload(Project.owner))
+        .where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(
@@ -78,6 +88,7 @@ async def update_project(session: AsyncSession, project_id: uuid.UUID, data: Pro
         project.github_repo_url = data.github_repo_url
         
     await session.flush()
+    await session.refresh(project)
     return project
 
 

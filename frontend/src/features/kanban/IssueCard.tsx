@@ -10,11 +10,15 @@ interface IssueCardProps {
   issue: Issue;
   index: number;
   isEditingByOther?: string;
+  users?: any[];
   onClick?: () => void;
 }
 
-export default function IssueCard({ issue, index, isEditingByOther, onClick }: IssueCardProps) {
-  const assignee = sampleUsers.find((u) => u.id === issue.assigneeId);
+export default function IssueCard({ issue, index, isEditingByOther, users = [], onClick }: IssueCardProps) {
+  const allUsers = users.length > 0 ? users : sampleUsers;
+  const assignee = allUsers.find((u) => u.id === (issue.assigneeId || (issue as any).assignee_id));
+  const assigneeName = assignee?.full_name || assignee?.username || assignee?.name;
+  const assigneeAvatar = assignee?.avatar_url || assignee?.avatarUrl;
 
   const getPriorityStyles = (p: string) => {
     switch (p) {
@@ -116,12 +120,21 @@ export default function IssueCard({ issue, index, isEditingByOther, onClick }: I
             </div>
 
             {assignee ? (
-              <img
-                src={assignee.avatarUrl}
-                alt={assignee.name}
-                className="h-6 w-6 rounded-full border border-zinc-800 object-cover"
-                title={`Assigned to ${assignee.name}`}
-              />
+              assigneeAvatar ? (
+                <img
+                  src={assigneeAvatar}
+                  alt={assigneeName}
+                  className="h-6 w-6 rounded-full border border-zinc-800 object-cover"
+                  title={`Assigned to ${assigneeName}`}
+                />
+              ) : (
+                <div 
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-800 bg-indigo-950 text-indigo-300 text-[9px] font-bold uppercase"
+                  title={`Assigned to ${assigneeName}`}
+                >
+                  {assigneeName ? assigneeName.substring(0, 2) : '??'}
+                </div>
+              )
             ) : (
               <div className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-zinc-700 bg-zinc-900 text-zinc-600">
                 <Layers size={10} />

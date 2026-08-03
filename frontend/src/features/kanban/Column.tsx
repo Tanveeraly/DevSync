@@ -11,6 +11,7 @@ interface ColumnProps {
   id: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
   title: string;
   issues: Issue[];
+  users?: any[];
   activeEditingIssues?: Record<string, { username: string; fullName?: string }>;
   onCardClick?: (issue: Issue) => void;
 }
@@ -19,6 +20,7 @@ export default function Column({
   id, 
   title, 
   issues, 
+  users = [],
   activeEditingIssues,
   onCardClick 
 }: ColumnProps) {
@@ -69,6 +71,7 @@ export default function Column({
                     key={issue.id}
                     issue={issue}
                     index={index}
+                    users={users}
                     isEditingByOther={editor ? (editor.fullName || editor.username) : undefined}
                     onClick={() => onCardClick?.(issue)}
                   />

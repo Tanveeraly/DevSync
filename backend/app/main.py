@@ -1,29 +1,25 @@
 """FastAPI application entry-point."""
 
+import logging
+import traceback
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.router import router as v1_router
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan handler.
-
-    Use this to initialise resources on startup (DB pools, caches, etc.)
-    and tear them down on shutdown.
-    """
-    # ── Startup ──────────────────────────────────────────────────────────
-    # e.g. await init_db(), warm caches, start background workers
+    """Application lifespan handler."""
     yield
-    # ── Shutdown ─────────────────────────────────────────────────────────
-    # e.g. await engine.dispose()
     from app.core.database import engine
-
     await engine.dispose()
 
 
@@ -35,14 +31,24 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
+# ── CORS (Supports localhost, 127.0.0.1 on any port) ─────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Global exception handler (surfaces errors in DEBUG mode) ─────────────────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    tb = traceback.format_exc()
+    logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, tb)
+    detail = tb if settings.DEBUG else "Internal server error. Check server logs for details."
+    return JSONResponse(status_code=500, content={"detail": detail})
+
 
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(v1_router)

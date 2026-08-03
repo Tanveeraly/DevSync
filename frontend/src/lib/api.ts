@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
 class ApiClient {
   private getHeaders(isFormData = false): HeadersInit {
@@ -89,6 +89,11 @@ class ApiClient {
       
       return this.handleResponse(response);
     } catch (error: any) {
+      if (error?.message === 'Failed to fetch' || error?.name === 'TypeError') {
+        const netErr: any = new Error('Backend server is offline or unreachable at http://127.0.0.1:8000. Please start the backend server.');
+        netErr.status = 0;
+        throw netErr;
+      }
       throw error;
     }
   }
@@ -130,9 +135,20 @@ class ApiClient {
     return this.request(`/projects/${slug}`);
   }
 
+  async getGithubStats(slug: string): Promise<any> {
+    return this.request(`/projects/${slug}/github-stats`);
+  }
+
   async createProject(data: { name: string; slug: string; description?: string; github_repo_url?: string }): Promise<any> {
     return this.request('/projects', {
       method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(slug: string, data: { name?: string; description?: string; github_repo_url?: string }): Promise<any> {
+    return this.request(`/projects/${slug}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
@@ -207,6 +223,29 @@ class ApiClient {
   // ── Activities ──
   async listActivities(projectSlug: string): Promise<any[]> {
     return this.request(`/projects/${projectSlug}/activities`);
+  }
+
+  // ── Combined Dashboard Data ──
+  async getDashboardData(): Promise<{ projects: any[]; users: any[]; issues: any[]; activities: any[] }> {
+    const projects = await this.listProjects();
+    const users = await this.listUsers().catch(() => []);
+    
+    let issues: any[] = [];
+    let activities: any[] = [];
+
+    if (projects.length > 0) {
+      // Fetch issues and activities for all projects in parallel
+      const issuePromises = projects.map((p: any) => this.listIssues(p.slug).catch(() => []));
+      const activityPromises = projects.map((p: any) => this.listActivities(p.slug).catch(() => []));
+      
+      const issueResults = await Promise.all(issuePromises);
+      const activityResults = await Promise.all(activityPromises);
+
+      issues = issueResults.flat();
+      activities = activityResults.flat();
+    }
+
+    return { projects, users, issues, activities };
   }
 }
 

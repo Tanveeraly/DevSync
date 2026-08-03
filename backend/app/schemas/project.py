@@ -27,7 +27,7 @@ class ProjectUpdate(BaseModel):
 class ProjectRead(ProjectBase):
     id: uuid.UUID
     owner_id: uuid.UUID
-    owner: UserRead
+    owner: UserRead | None = None
     created_at: datetime
     updated_at: datetime
 

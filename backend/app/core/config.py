@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str = ""
     GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/github/callback"
 
+    # ── GitHub Personal Access Token (for API stats) ──────────────────────
+    GITHUB_PAT: str = ""
+
     # ── Encryption (for storing GitHub tokens at rest) ───────────────────
     ENCRYPTION_KEY: str = "change-me-32-byte-key-in-prod!!"
 

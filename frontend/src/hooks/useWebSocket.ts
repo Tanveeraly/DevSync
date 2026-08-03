@@ -21,8 +21,10 @@ export function useWebSocket({ projectId, onEvent }: UseWebSocketOptions) {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // Use api host but switch ports or protocols if needed
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-    const host = apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '');
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+    const host = apiBase.startsWith('http')
+      ? apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
+      : '127.0.0.1:8000';
     const wsUrl = `${protocol}//${host}/api/v1/ws/${projectId}?token=${encodeURIComponent(token)}`;
 
     const socket = new WebSocket(wsUrl);
