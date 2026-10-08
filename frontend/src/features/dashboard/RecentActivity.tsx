@@ -2,18 +2,24 @@
 
 import React from 'react';
 import { GitPullRequest, GitBranch, Play, CheckCircle2, GitCommit, ExternalLink } from 'lucide-react';
-import { sampleActivities, sampleUsers } from '@/data/sample';
+import { sampleUsers } from '@/data/sample';
 import { formatDate } from '@/lib/utils';
 
 interface RecentActivityProps {
   activities?: any[];
   users?: any[];
   recentCommits?: any[];
+  isGithubLoaded?: boolean;
 }
 
-export default function RecentActivity({ activities = [], users = [], recentCommits = [] }: RecentActivityProps) {
-  const isLiveCommits = recentCommits && recentCommits.length > 0;
-  const displayActivities = activities.length > 0 ? activities : sampleActivities;
+export default function RecentActivity({
+  activities = [],
+  users = [],
+  recentCommits = [],
+  isGithubLoaded = false,
+}: RecentActivityProps) {
+  const isLiveCommits = isGithubLoaded && recentCommits.length > 0;
+  const displayActivities = activities;
   const displayUsers = users.length > 0 ? users : sampleUsers;
 
   const getIcon = (type: string, action: string) => {
@@ -43,11 +49,11 @@ export default function RecentActivity({ activities = [], users = [], recentComm
         </div>
       </div>
 
-      <div className="mt-4 flex-1 space-y-4 overflow-y-auto max-h-[300px] pr-1">
+      <div className="mt-4 flex-1 space-y-4 overflow-y-auto max-h-75 pr-1">
         {isLiveCommits ? (
           recentCommits.map((commit, i) => (
             <div key={commit.sha || i} className="flex gap-3 text-xs leading-5">
-              <div className="relative flex-shrink-0">
+              <div className="relative shrink-0">
                 {commit.avatarUrl ? (
                   <img
                     src={commit.avatarUrl}
@@ -55,7 +61,7 @@ export default function RecentActivity({ activities = [], users = [], recentComm
                     className="h-7 w-7 rounded-full border border-zinc-800 object-cover"
                   />
                 ) : (
-                  <div className="h-7 w-7 rounded-full border border-zinc-800 bg-indigo-950/40 border-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-indigo-400 uppercase">
+                  <div className="h-7 w-7 rounded-full border border-indigo-500/30 bg-indigo-950/40 flex items-center justify-center text-[10px] font-bold text-indigo-400 uppercase">
                     {(commit.author || 'GH').substring(0, 2)}
                   </div>
                 )}
@@ -87,7 +93,7 @@ export default function RecentActivity({ activities = [], users = [], recentComm
               </div>
             </div>
           ))
-        ) : (
+        ) : displayActivities.length > 0 ? (
           displayActivities.map((act) => {
             const user = displayUsers.find((u) => u.id === (act.userId || act.user_id));
             const userName = user?.full_name || user?.username || user?.name || 'User';
@@ -97,7 +103,7 @@ export default function RecentActivity({ activities = [], users = [], recentComm
 
             return (
               <div key={act.id} className="flex gap-3 text-xs leading-5">
-                <div className="relative flex-shrink-0">
+                <div className="relative shrink-0">
                   {avatarUrl ? (
                     <img
                       src={avatarUrl}
@@ -132,6 +138,11 @@ export default function RecentActivity({ activities = [], users = [], recentComm
               </div>
             );
           })
+        ) : (
+          <div className="flex h-full min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 px-6 text-center">
+            <p className="text-xs font-medium text-zinc-300">No activity has been recorded yet</p>
+            <p className="mt-1 text-[10px] text-zinc-600">Workspace activity will appear here as changes are made.</p>
+          </div>
         )}
       </div>
     </div>

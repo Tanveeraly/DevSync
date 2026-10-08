@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings",
     "email-validator",
     "python-jose[cryptography]",
+    "cryptography",
     "passlib[bcrypt]",
     "httpx",
     "python-multipart",

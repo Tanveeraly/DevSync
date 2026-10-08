@@ -21,6 +21,7 @@ export default function DashboardPage() {
     activities: [],
   });
   const [githubStats, setGithubStats] = useState<any>(null);
+  const [githubConnection, setGithubConnection] = useState<{ linked: boolean; loading: boolean }>({ linked: false, loading: true });
   const [loading, setLoading] = useState(true);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showSetGithubModal, setShowSetGithubModal] = useState(false);
@@ -31,16 +32,22 @@ export default function DashboardPage() {
       const dashboardData = await api.getDashboardData();
       setData(dashboardData);
 
-      if (dashboardData.projects.length > 0) {
+      const status = await api.getGithubStatus();
+      setGithubConnection({ linked: status.linked, loading: false });
+
+      if (dashboardData.projects.length > 0 && status.linked) {
         const firstSlug = dashboardData.projects[0].slug;
         try {
           const stats = await api.getGithubStats(firstSlug);
           setGithubStats(stats);
         } catch (err) {
-          console.error('Failed to fetch github stats:', err);
+          setGithubStats({ error: err instanceof Error ? err.message : 'Unable to load GitHub statistics.' });
         }
+      } else {
+        setGithubStats(null);
       }
     } catch (err) {
+      setGithubConnection({ linked: false, loading: false });
       console.error('Failed to load dashboard data:', err);
     } finally {
       setLoading(false);
@@ -56,7 +63,21 @@ export default function DashboardPage() {
     router.push(`/board/${project.slug}`);
   };
 
+  const handleRepositorySaved = async (updatedProject: { github_repo_url: string }) => {
+    setData((currentData) => ({
+      ...currentData,
+      projects: currentData.projects.map((project) =>
+        project.slug === activeProject?.slug
+          ? { ...project, github_repo_url: updatedProject.github_repo_url }
+          : project
+      ),
+    }));
+
+    await loadDashboard();
+  };
+
   const activeProject = data.projects.length > 0 ? data.projects[0] : null;
+  const hasRepositoryUrl = Boolean(activeProject?.github_repo_url);
 
   // Empty state — no projects yet
   if (!loading && data.projects.length === 0) {
@@ -151,7 +172,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Metrics cards */}
-      <StatsCards issues={data.issues} users={data.users} activities={data.activities} githubStats={githubStats} />
+      <StatsCards
+        issues={data.issues}
+        users={data.users}
+        activities={data.activities}
+        githubStats={githubStats}
+        githubConnected={githubConnection.linked}
+        hasRepositoryUrl={hasRepositoryUrl}
+      />
 
       {/* Primary Graphs Row */}
       <div className="grid gap-6 md:grid-cols-3">
@@ -159,6 +187,9 @@ export default function DashboardPage() {
           <ActivityChart
             data={githubStats?.commits_by_day}
             error={githubStats?.error}
+            isLoaded={Boolean(githubStats && !githubStats.error)}
+            hasRepositoryUrl={hasRepositoryUrl}
+            githubConnected={githubConnection.linked}
             onLinkGithub={() => setShowSetGithubModal(true)}
           />
         </div>
@@ -170,13 +201,19 @@ export default function DashboardPage() {
       {/* Secondary Graphs Row */}
       <div className="grid gap-6 md:grid-cols-3">
         <div className="md:col-span-2">
-          <ContributorGraph data={githubStats?.contributors} />
+          <ContributorGraph
+            data={githubStats?.contributors}
+            isLoaded={Boolean(githubStats && !githubStats.error)}
+            hasRepositoryUrl={hasRepositoryUrl}
+            githubConnected={githubConnection.linked}
+          />
         </div>
         <div>
           <RecentActivity
             activities={data.activities}
             users={data.users}
             recentCommits={githubStats?.recent_commits}
+            isGithubLoaded={Boolean(githubStats && !githubStats.error)}
           />
         </div>
       </div>
@@ -194,7 +231,7 @@ export default function DashboardPage() {
           projectSlug={activeProject.slug}
           currentRepoUrl={activeProject.github_repo_url || ''}
           onClose={() => setShowSetGithubModal(false)}
-          onSaved={loadDashboard}
+          onSaved={handleRepositorySaved}
         />
       )}
     </div>

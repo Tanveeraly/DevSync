@@ -29,20 +29,33 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    AUTH_COOKIE_NAME: str = "devsync_access_token"
+    AUTH_COOKIE_SECURE: bool = False
 
     # ── CORS ─────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # ── GitHub OAuth ─────────────────────────────────────────────────────
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
-    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/github/callback"
+    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/github/callback"
 
     # ── GitHub Personal Access Token (for API stats) ──────────────────────
     GITHUB_PAT: str = ""
 
     # ── Encryption (for storing GitHub tokens at rest) ───────────────────
     ENCRYPTION_KEY: str = "change-me-32-byte-key-in-prod!!"
+
+    # ── Password reset ───────────────────────────────────────────────────
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # ── Email / SMTP ─────────────────────────────────────────────────────
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM: str = "noreply@devsync.local"
 
 
 settings = Settings()

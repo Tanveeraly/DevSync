@@ -121,6 +121,20 @@ class ApiClient {
     return this.request('/auth/me');
   }
 
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password: newPassword }),
+    });
+  }
+
   // ── Users ──
   async listUsers(): Promise<any[]> {
     return this.request('/users');
@@ -137,6 +151,22 @@ class ApiClient {
 
   async getGithubStats(slug: string): Promise<any> {
     return this.request(`/projects/${slug}/github-stats`);
+  }
+
+  async getGithubStatus(): Promise<{ linked: boolean }> {
+    return this.request('/github/status');
+  }
+
+  async getGithubRepositories(): Promise<any[]> {
+    return this.request('/github/repositories');
+  }
+
+  async linkGithubAccount(): Promise<void> {
+    window.location.href = `${API_BASE_URL}/github/login`;
+  }
+
+  async disconnectGithub(): Promise<void> {
+    await this.request('/github', { method: 'DELETE' });
   }
 
   async createProject(data: { name: string; slug: string; description?: string; github_repo_url?: string }): Promise<any> {

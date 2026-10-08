@@ -37,18 +37,21 @@ def _get_pat() -> str:
     return pat.strip()
 
 
-def _auth_headers() -> dict[str, str]:
+def _auth_headers(pat: str | None = None) -> dict[str, str]:
     headers: dict[str, str] = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    pat = _get_pat()
-    if pat:
-        headers["Authorization"] = f"Bearer {pat}"
+    token = pat or _get_pat()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
-async def get_github_stats(github_repo_url: str | None) -> dict[str, Any]:
+async def get_github_stats(
+    github_repo_url: str | None,
+    pat: str | None = None,
+) -> dict[str, Any]:
     """
     Fetch live GitHub stats for a repository.
 
@@ -68,11 +71,12 @@ async def get_github_stats(github_repo_url: str | None) -> dict[str, Any]:
     if not repo:
         return _empty_stats("No GitHub repository URL set on this project. Click 'Link GitHub Repo' to connect.")
 
-    pat = _get_pat()
+    if pat is None:
+        pat = _get_pat()
     if not pat:
-        return _empty_stats("GITHUB_PAT not configured in backend .env file.")
+        return _empty_stats("GitHub account is not linked. Link your GitHub account in Settings.")
 
-    headers = _auth_headers()
+    headers = _auth_headers(pat)
 
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         try:
@@ -113,49 +117,60 @@ async def get_github_stats(github_repo_url: str | None) -> dict[str, Any]:
             return _empty_stats(f"Network error connecting to GitHub API: {exc}")
 
     # ── Map Commits by Day ────────────────────────────────────────────────
-    # We map dates over the last 14 days (or recent dates)
     today = datetime.now(timezone.utc).date()
-    day_map: dict[str, dict] = {}
-    
-    # Pre-fill last 7 days for the chart display
-    for i in range(6, -1, -1):
-        d = today - timedelta(days=i)
-        label = d.strftime("%a")
-        day_map[d.isoformat()] = {"day": label, "date": d.isoformat(), "commits": 0, "prs": 0, "issuesClosed": 0}
 
+    # Collect all activity dates from commits and PRs
+    activity_dates: list[datetime.date] = []
     for c in commits_raw:
         try:
-            date_str = c["commit"]["author"]["date"][:10]
-            if date_str in day_map:
-                day_map[date_str]["commits"] += 1
-            else:
-                # If commits exist on another recent date, add it if within window
-                dt = datetime.strptime(date_str, "%Y-%m-%d").date()
-                if (today - dt).days <= 14:
-                    day_map[date_str] = {
-                        "day": dt.strftime("%a"),
-                        "date": date_str,
-                        "commits": 1,
-                        "prs": 0,
-                        "issuesClosed": 0,
-                    }
+            if isinstance(c, dict) and "commit" in c and "author" in c["commit"]:
+                date_str = c["commit"]["author"]["date"][:10]
+                activity_dates.append(datetime.strptime(date_str, "%Y-%m-%d").date())
         except (KeyError, TypeError, ValueError):
             pass
 
     for pr in prs_raw:
         try:
-            merged_at = pr.get("merged_at")
-            if merged_at:
-                date_str = merged_at[:10]
+            if isinstance(pr, dict) and pr.get("created_at"):
+                date_str = pr["created_at"][:10]
+                activity_dates.append(datetime.strptime(date_str, "%Y-%m-%d").date())
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    # Determine end date of 7-day window: if activity in last 7 days, use today; otherwise anchor to most recent activity
+    latest_activity = max(activity_dates) if activity_dates else today
+    end_date = today if (today - latest_activity).days <= 6 else latest_activity
+
+    day_map: dict[str, dict] = {}
+    for i in range(6, -1, -1):
+        d = end_date - timedelta(days=i)
+        label = d.strftime("%a")
+        day_map[d.isoformat()] = {"day": label, "date": d.isoformat(), "commits": 0, "prs": 0, "issuesClosed": 0}
+
+    for c in commits_raw:
+        try:
+            if isinstance(c, dict) and "commit" in c and "author" in c["commit"]:
+                date_str = c["commit"]["author"]["date"][:10]
                 if date_str in day_map:
-                    day_map[date_str]["prs"] += 1
-                    day_map[date_str]["issuesClosed"] += 1
+                    day_map[date_str]["commits"] += 1
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    for pr in prs_raw:
+        try:
+            if isinstance(pr, dict):
+                merged_at = pr.get("merged_at")
+                created_at = pr.get("created_at")
+                if merged_at and merged_at[:10] in day_map:
+                    day_map[merged_at[:10]]["prs"] += 1
+                    day_map[merged_at[:10]]["issuesClosed"] += 1
+                elif created_at and created_at[:10] in day_map:
+                    day_map[created_at[:10]]["prs"] += 1
         except (KeyError, TypeError):
             pass
 
-    # Sort days chronologically and take last 7
-    sorted_days = sorted(day_map.values(), key=lambda x: x["date"])
-    commits_by_day = sorted_days[-7:]
+    # Sort days chronologically
+    commits_by_day = sorted(day_map.values(), key=lambda x: x["date"])
 
     # ── Contributors List ─────────────────────────────────────────────────
     contributors = []

@@ -37,6 +37,12 @@ async def create_project(session: AsyncSession, owner_id: uuid.UUID, data: Proje
     )
     session.add(owner_member)
     await session.flush()
+    
+    # Auto-create default Development Board with columns
+    from app.schemas.board import BoardCreate
+    from app.services.board_service import create_board
+    await create_board(session, project.id, BoardCreate(name="Development Board"))
+    
     return project
 
 

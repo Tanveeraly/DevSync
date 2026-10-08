@@ -101,26 +101,32 @@ export default function Board() {
       ];
 
       rawIssues.forEach((issue: any) => {
-        const statusSlug = issue.column_id ? colIdMap[issue.column_id] : issue.status;
-        const targetCol = grouped.find((c) => c.id === statusSlug);
-        
-        if (targetCol) {
-          targetCol.issues.push({
-            id: issue.id,
-            title: issue.title,
-            description: issue.description || '',
-            status: statusSlug as any,
-            priority: issue.priority,
-            assigneeId: issue.assignee_id,
-            reporterId: issue.reporter_id,
-            version: issue.version,
-            branchName: issue.branch_name,
-            prUrl: issue.pr_url,
-            labels: issue.labels || [],
-            createdAt: issue.created_at,
-            updatedAt: issue.updated_at,
-          });
+        let statusSlug = (issue.column_id && colIdMap[issue.column_id])
+          ? colIdMap[issue.column_id]
+          : (issue.status || 'todo').toLowerCase();
+
+        if (statusSlug === 'to_do') statusSlug = 'todo';
+
+        let targetCol = grouped.find((c) => c.id === statusSlug);
+        if (!targetCol) {
+          targetCol = grouped.find((c) => c.id === 'todo') || grouped[1] || grouped[0];
         }
+        
+        targetCol.issues.push({
+          id: issue.id,
+          title: issue.title,
+          description: issue.description || '',
+          status: targetCol.id as any,
+          priority: (issue.priority || 'medium').toLowerCase(),
+          assigneeId: issue.assignee_id,
+          reporterId: issue.reporter_id,
+          version: issue.version,
+          branchName: issue.branch_name,
+          prUrl: issue.pr_url,
+          labels: issue.labels || [],
+          createdAt: issue.created_at,
+          updatedAt: issue.updated_at,
+        });
       });
 
       // Sort issue positions
@@ -251,16 +257,22 @@ export default function Board() {
     }
   };
 
+  const [newIssueError, setNewIssueError] = useState('');
+  const [creatingIssue, setCreatingIssue] = useState(false);
+
   const handleCreateIssue = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIssueTitle.trim()) return;
 
+    setCreatingIssue(true);
+    setNewIssueError('');
+
     try {
       await api.createIssue(projectSlug, {
-        title: newIssueTitle,
-        description: newIssueDesc || undefined,
-        status: newIssueStatus.toUpperCase(),
-        priority: newIssuePriority.toUpperCase(),
+        title: newIssueTitle.trim(),
+        description: newIssueDesc.trim() || undefined,
+        status: newIssueStatus.toLowerCase() as any,
+        priority: newIssuePriority.toLowerCase() as any,
         assignee_id: newIssueAssignee || undefined,
         labels: []
       });
@@ -271,12 +283,16 @@ export default function Board() {
       setNewIssuePriority('medium');
       setNewIssueStatus('todo');
       setNewIssueAssignee('');
+      setNewIssueError('');
       setShowNewIssueModal(false);
       
       // Reload board data
       loadBoardData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create issue:', err);
+      setNewIssueError(err.message || 'Failed to create issue. Please try again.');
+    } finally {
+      setCreatingIssue(false);
     }
   };
 
@@ -531,19 +547,34 @@ export default function Board() {
                 </select>
               </div>
 
+              {newIssueError && (
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400">
+                  {newIssueError}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowNewIssueModal(false)}
-                  className="flex-1 rounded-lg border border-zinc-800 bg-transparent py-2 text-center text-zinc-400 hover:text-white transition-colors"
+                  disabled={creatingIssue}
+                  className="flex-1 rounded-lg border border-zinc-800 bg-transparent py-2 text-center text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded-lg bg-indigo-600 py-2 font-semibold text-white hover:bg-indigo-500 shadow-md transition-colors"
+                  disabled={creatingIssue || !newIssueTitle.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-indigo-600 py-2 font-semibold text-white hover:bg-indigo-500 shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Create
+                  {creatingIssue ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Issue'
+                  )}
                 </button>
               </div>
             </form>

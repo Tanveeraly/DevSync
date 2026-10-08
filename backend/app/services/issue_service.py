@@ -17,12 +17,18 @@ async def create_issue(
     board_stmt = select(Board).where(Board.project_id == project_id).limit(1)
     board_res = await session.execute(board_stmt)
     board = board_res.scalar_one_or_none()
+    if not board:
+        from app.schemas.board import BoardCreate
+        from app.services.board_service import create_board
+        board = await create_board(session, project_id, BoardCreate(name="Development Board"))
+
     if board and board.columns:
         # Find column matching status or fallback to first
-        target_status = data.status.value
+        target_status = data.status.value.lower()
         matched_col = None
         for col in board.columns:
-            if col.name.lower().replace(" ", "_") == target_status:
+            col_slug = col.name.lower().replace(" ", "_")
+            if col_slug == target_status or (target_status == "todo" and col_slug == "todo") or (target_status in col_slug):
                 matched_col = col
                 break
         column_id = matched_col.id if matched_col else board.columns[0].id

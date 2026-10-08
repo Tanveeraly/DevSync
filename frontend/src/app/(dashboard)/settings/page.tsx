@@ -1,10 +1,64 @@
 'use client';
 
-import { Shield, Users, Lock, Database } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Link2, Loader2, LogOut, Users, Lock, Database } from 'lucide-react';
 import { GithubIcon as Github } from '@/components/ui/icons';
+import { api } from '@/lib/api';
 import { sampleUsers } from '@/data/sample';
 
 export default function SettingsPage() {
+  const [linked, setLinked] = useState(false);
+  const [repositories, setRepositories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const loadGitHub = async () => {
+      try {
+        const status = await api.getGithubStatus();
+        setLinked(status.linked);
+        if (status.linked) {
+          setRepositories(await api.getGithubRepositories());
+        }
+      } catch (err: any) {
+        setError(err.message || 'Unable to check GitHub connection.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadGitHub();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('github') === 'connected') setMessage('GitHub account connected.');
+    if (params.get('github') === 'error') setError('GitHub connection failed. Please try again.');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
+  const connect = async () => {
+    setError('');
+    try {
+      await api.linkGithubAccount();
+    } catch (err: any) {
+      setError(err.message || 'Unable to start GitHub login.');
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect your GitHub account?')) return;
+    setLoading(true);
+    try {
+      await api.disconnectGithub();
+      setLinked(false);
+      setRepositories([]);
+      setMessage('GitHub account disconnected.');
+    } catch (err: any) {
+      setError(err.message || 'Unable to disconnect GitHub.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 text-left">
       <div>
@@ -87,23 +141,48 @@ export default function SettingsPage() {
         <div className="space-y-4">
           {/* Card 3: GitHub status */}
           <div className="rounded-xl border border-zinc-800 bg-[#0f0f12] p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-2">
-              <Github size={16} className="text-white" />
-              <h3 className="text-sm font-semibold text-white">GitHub Integration</h3>
-            </div>
-            <p className="text-[11px] text-zinc-400 leading-normal">
-              Your account is successfully linked to GitHub. Live status checks map push messages and merge alerts directly to task columns.
-            </p>
-            <div className="rounded-lg bg-zinc-950/60 border border-zinc-800/80 p-2.5 text-[10px] space-y-1">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Scope:</span>
-                <span className="font-mono text-zinc-300">repo, user:email</span>
+            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+              <div className="flex items-center gap-2">
+                <Github size={16} className="text-white" />
+                <h3 className="text-sm font-semibold text-white">GitHub Integration</h3>
               </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Rate Limit:</span>
-                <span className="text-zinc-300">4,992 / 5,000</span>
-              </div>
+              <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${linked ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                {linked ? 'CONNECTED' : 'DISCONNECTED'}
+              </span>
             </div>
+
+            {loading ? (
+              <div className="flex items-center gap-2 py-3 text-[11px] text-zinc-500">
+                <Loader2 size={13} className="animate-spin" /> Checking connection...
+              </div>
+            ) : linked ? (
+              <div className="space-y-3">
+                <p className="text-[11px] text-zinc-400">Your GitHub account is linked. Select a repository to use with a project.</p>
+                <div className="max-h-40 space-y-1.5 overflow-y-auto">
+                  {repositories.length === 0 ? (
+                    <p className="rounded-lg bg-zinc-950/60 p-3 text-[10px] text-zinc-500">No repositories were returned by GitHub.</p>
+                  ) : repositories.map((repository: any) => (
+                    <div key={repository.id} className="flex items-center justify-between rounded-lg bg-zinc-950/60 border border-zinc-800 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-medium text-zinc-200">{repository.full_name}</div>
+                        <div className="text-[9px] text-zinc-600">{repository.private ? 'Private' : 'Public'}</div>
+                      </div>
+                      <Link2 size={12} className="text-zinc-600" />
+                    </div>
+                  ))}
+                </div>
+                <button onClick={disconnect} disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-500/30 py-2 text-[10px] font-semibold text-rose-400 hover:bg-rose-500/10 disabled:opacity-50">
+                  <LogOut size={12} /> Disconnect GitHub
+                </button>
+              </div>
+            ) : (
+              <button onClick={connect} className="flex w-full items-center justify-center gap-2 rounded-lg bg-white py-2.5 text-[11px] font-bold text-black hover:bg-zinc-200">
+                <Github size={14} /> Connect GitHub account
+              </button>
+            )}
+
+            {message && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-400">{message}</p>}
+            {error && <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-[10px] text-rose-400">{error}</p>}
           </div>
 
           {/* Card 4: Database status */}

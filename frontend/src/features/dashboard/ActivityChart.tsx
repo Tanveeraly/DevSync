@@ -16,12 +16,27 @@ import { Link2 } from 'lucide-react';
 interface ActivityChartProps {
   data?: any[];
   error?: string | null;
+  isLoaded?: boolean;
+  hasRepositoryUrl?: boolean;
+  githubConnected?: boolean;
   onLinkGithub?: () => void;
 }
 
-export default function ActivityChart({ data, error, onLinkGithub }: ActivityChartProps) {
+export default function ActivityChart({
+  data,
+  error,
+  isLoaded = false,
+  hasRepositoryUrl = false,
+  githubConnected = false,
+  onLinkGithub,
+}: ActivityChartProps) {
   const chartData = data && data.length > 0 ? data : sampleCommitStats;
-  const isLive = data && data.length > 0 && !error;
+  const isLive = isLoaded && !error;
+  const unavailableMessage = !hasRepositoryUrl
+    ? 'Link a repository URL to load GitHub activity.'
+    : !githubConnected
+      ? 'Connect your GitHub account to load GitHub activity.'
+      : 'GitHub activity is temporarily unavailable.';
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-[#0f0f12] p-5 shadow-sm">
@@ -35,15 +50,15 @@ export default function ActivityChart({ data, error, onLinkGithub }: ActivityCha
               </span>
             ) : (
               <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                Sample Data
+                Unavailable
               </span>
             )}
           </div>
           <p className="text-[11px] text-zinc-500">Commits, PRs, and resolved issues over the past week</p>
-          {error && (
+          {!isLive && (
             <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-[10px] text-amber-400 font-medium">{error}</span>
-              {onLinkGithub && (
+              <span className="text-[10px] text-amber-400 font-medium">{error || unavailableMessage}</span>
+              {onLinkGithub && !hasRepositoryUrl && (
                 <button
                   onClick={onLinkGithub}
                   className="flex items-center gap-1 text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold underline underline-offset-2 transition-colors"
@@ -69,11 +84,12 @@ export default function ActivityChart({ data, error, onLinkGithub }: ActivityCha
       </div>
 
       <div className="h-72 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={chartData}
-            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-          >
+        {isLive ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart
+              data={chartData}
+              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            >
             <defs>
               <linearGradient id="commitsColor" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
@@ -130,17 +146,25 @@ export default function ActivityChart({ data, error, onLinkGithub }: ActivityCha
               fillOpacity={1}
               fill="url(#prsColor)"
             />
-            <Area
-              type="monotone"
-              dataKey="issuesClosed"
-              name="Resolved"
-              stroke="#10b981"
-              strokeWidth={2}
-              fillOpacity={1}
-              fill="url(#resolvedColor)"
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+              <Area
+                type="monotone"
+                dataKey="issuesClosed"
+                name="Resolved"
+                stroke="#10b981"
+                strokeWidth={2}
+                fillOpacity={1}
+                fill="url(#resolvedColor)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/30 px-6 text-center">
+            <div>
+              <p className="text-xs font-medium text-zinc-300">GitHub activity is not available</p>
+              <p className="mt-1 text-[10px] text-zinc-600">Live activity will appear after connecting a repository.</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

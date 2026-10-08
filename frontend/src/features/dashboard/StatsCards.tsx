@@ -19,6 +19,8 @@ interface StatsCardsProps {
   users?: any[];
   activities?: any[];
   githubStats?: any;
+  githubConnected?: boolean;
+  hasRepositoryUrl?: boolean;
 }
 
 export default function StatsCards({
@@ -26,6 +28,8 @@ export default function StatsCards({
   users = [],
   activities = [],
   githubStats,
+  githubConnected = false,
+  hasRepositoryUrl = false,
 }: StatsCardsProps) {
   const totalIssuesCount = issues.length;
   const activeIssues = issues.filter((i) => i.status !== 'done').length;
@@ -48,6 +52,13 @@ export default function StatsCards({
       : [0, 0, 0, 0, 0, 0, openPrsCount || 1];
 
   const isLive = !!githubStats && !githubStats.error;
+  const repositoryStatus = !hasRepositoryUrl
+    ? 'Link a repository'
+    : !githubConnected
+      ? 'Connect GitHub account'
+      : isLive
+        ? 'Live from GitHub'
+        : 'GitHub data unavailable';
 
   const stats: StatItem[] = [
     {
@@ -62,7 +73,7 @@ export default function StatsCards({
     {
       name: 'Open PRs',
       value: `${openPrsCount} PR${openPrsCount === 1 ? '' : 's'}`,
-      change: isLive ? 'Live from GitHub' : 'No repo linked',
+      change: repositoryStatus,
       changeType: openPrsCount > 0 ? 'increase' : 'neutral',
       icon: GitPullRequest,
       sparklineData: prSparkline.map((v) => Math.max(0, v)),
@@ -83,7 +94,7 @@ export default function StatsCards({
       value: `${contributorCount} member${contributorCount === 1 ? '' : 's'}`,
       change: isLive
         ? `${githubStats?.recent_commits?.length ?? 0} recent commits`
-        : 'Active team',
+        : repositoryStatus,
       changeType: 'neutral',
       icon: Users,
       sparklineData: commitSparkline.map((v) => Math.max(0, v)),

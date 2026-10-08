@@ -9,7 +9,7 @@ interface SetGithubRepoModalProps {
   projectSlug: string;
   currentRepoUrl?: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (project: { github_repo_url: string }) => Promise<void> | void;
 }
 
 export default function SetGithubRepoModal({
@@ -33,10 +33,10 @@ export default function SetGithubRepoModal({
     setError('');
 
     try {
-      await api.updateProject(projectSlug, {
+      const updatedProject = await api.updateProject(projectSlug, {
         github_repo_url: repoUrl.trim(),
       });
-      onSaved();
+      await onSaved(updatedProject);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to update GitHub repository URL.');

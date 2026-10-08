@@ -6,6 +6,7 @@ from app.api.v1.endpoints.activities import router as activities_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.boards import router as boards_router
 from app.api.v1.endpoints.comments import router as comments_router
+from app.api.v1.endpoints.github import router as github_router
 from app.api.v1.endpoints.issues import router as issues_router
 from app.api.v1.endpoints.projects import router as projects_router
 from app.api.v1.endpoints.users import router as users_router
@@ -25,6 +26,7 @@ async def health_check():
 # ── Register domain routers ──────────────────────────────────────────────────
 router.include_router(auth_router,       prefix="/auth",       tags=["auth"])
 router.include_router(users_router,      prefix="/users",      tags=["users"])
+router.include_router(github_router,     prefix="",            tags=["github"])
 router.include_router(projects_router,   prefix="/projects",   tags=["projects"])
 router.include_router(boards_router,     prefix="",            tags=["boards"])
 router.include_router(issues_router,     prefix="",            tags=["issues"])

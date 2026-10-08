@@ -5,13 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     decode_token,
     hash_password,
     verify_password,
+    verify_password_reset_token,
 )
 from app.models.user import User
 from app.schemas.auth import RegisterRequest, TokenResponse
+from app.services.email_service import send_password_reset_email
+from app.core.config import settings
 
 
 async def register_user(session: AsyncSession, data: RegisterRequest) -> User:
@@ -92,3 +96,50 @@ async def refresh_tokens(session: AsyncSession, refresh_token: str) -> TokenResp
     new_access = create_access_token(user.id)
     new_refresh = create_refresh_token(user.id)
     return TokenResponse(access_token=new_access, refresh_token=new_refresh)
+
+
+async def request_password_reset(session: AsyncSession, email: str) -> None:
+    """Generate a password-reset token and e-mail the reset link.
+
+    Always returns without error – even when the email is not found – to
+    prevent user-enumeration attacks.
+    """
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        # Silent return – don't reveal whether the address exists.
+        return
+
+    token = create_password_reset_token(email)
+    reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+
+    try:
+        await send_password_reset_email(email, reset_link)
+    except Exception:
+        # Log is already emitted inside send_password_reset_email; swallow here
+        # so the endpoint always returns a generic success response.
+        pass
+
+
+async def reset_password(session: AsyncSession, token: str, new_password: str) -> None:
+    """Verify a password-reset token and update the user's hashed password."""
+    try:
+        email = verify_password_reset_token(token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User not found or account is inactive",
+        )
+
+    user.hashed_password = hash_password(new_password)
+    await session.flush()
