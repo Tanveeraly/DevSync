@@ -1,9 +1,11 @@
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
-from app.models.project import MemberRole
+from app.models.project import MemberRole, ProjectMember
+from app.models.user import User
 from app.schemas.project import (
     ProjectCreate,
     ProjectMemberAdd,
@@ -11,6 +13,7 @@ from app.schemas.project import (
     ProjectRead,
     ProjectUpdate,
 )
+from app.schemas.user import UserRead
 from app.services.github_service import get_github_stats
 from app.services.github_auth_service import get_linked_github_token
 from app.services.project_service import (
@@ -21,6 +24,7 @@ from app.services.project_service import (
     get_project_by_slug,
     list_user_projects,
     remove_project_member,
+    sync_project_contributors,
     update_project,
 )
 
@@ -75,7 +79,49 @@ async def get_project_github_stats(session: DBSession, slug: str, current_user: 
     project = await get_project_by_slug(session, slug)
     await check_access(session, project.id, current_user.id)
     token = await get_linked_github_token(session, current_user.id)
-    return await get_github_stats(project.github_repo_url, token)
+    stats = await get_github_stats(project.github_repo_url, token)
+    if stats.get("contributors"):
+        try:
+            await sync_project_contributors(session, project.id, stats["contributors"])
+            await session.commit()
+        except Exception:
+            pass
+    return stats
+
+
+@router.get("/{slug}/members", response_model=list[UserRead])
+async def list_project_members(session: DBSession, slug: str, current_user: CurrentUser):
+    """List all assignable members and GitHub contributors for a project."""
+    project = await get_project_by_slug(session, slug)
+    await check_access(session, project.id, current_user.id)
+
+    # Sync GitHub contributors if project has a repository URL
+    if project.github_repo_url:
+        try:
+            token = await get_linked_github_token(session, current_user.id)
+            stats = await get_github_stats(project.github_repo_url, token)
+            if stats.get("contributors"):
+                await sync_project_contributors(session, project.id, stats["contributors"])
+                await session.commit()
+        except Exception:
+            pass
+
+    stmt = (
+        select(User)
+        .join(ProjectMember, ProjectMember.user_id == User.id)
+        .where(ProjectMember.project_id == project.id, User.is_active == True)
+        .order_by(User.full_name, User.username)
+    )
+    result = await session.execute(stmt)
+    members = list(result.scalars().all())
+
+    # Fallback to all active users if project members list is empty
+    if not members:
+        all_res = await session.execute(select(User).where(User.is_active == True))
+        members = list(all_res.scalars().all())
+
+    return members
+
 
 
 @router.patch("/{slug}", response_model=ProjectRead)

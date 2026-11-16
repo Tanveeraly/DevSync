@@ -171,3 +171,60 @@ async def check_user_membership(session: AsyncSession, project_id: uuid.UUID, us
         )
     )
     return result.scalar_one_or_none()
+
+
+async def sync_project_contributors(
+    session: AsyncSession, project_id: uuid.UUID, contributors: list[dict]
+) -> list[User]:
+    """Ensure GitHub contributors exist as active Users and ProjectMembers so issues can be assigned to them."""
+    synced_users: list[User] = []
+    for c in contributors:
+        username = str(c.get("name") or c.get("login") or "").strip()
+        if not username or username.lower() == "unknown":
+            continue
+
+        avatar_url = c.get("avatarUrl") or c.get("avatar_url") or None
+        email = f"{username.lower()}@users.noreply.github.com"
+
+        # Check by username or email
+        res = await session.execute(
+            select(User).where((User.username.ilike(username)) | (User.email == email))
+        )
+        user = res.scalar_one_or_none()
+
+        if not user:
+            user = User(
+                username=username,
+                full_name=username,
+                email=email,
+                avatar_url=avatar_url,
+                is_active=True,
+            )
+            session.add(user)
+            await session.flush()
+        else:
+            if avatar_url and not user.avatar_url:
+                user.avatar_url = avatar_url
+            if not user.full_name:
+                user.full_name = username
+            await session.flush()
+
+        # Ensure project membership
+        mem_res = await session.execute(
+            select(ProjectMember).where(
+                (ProjectMember.project_id == project_id) & (ProjectMember.user_id == user.id)
+            )
+        )
+        if not mem_res.scalar_one_or_none():
+            member = ProjectMember(
+                project_id=project_id,
+                user_id=user.id,
+                role=MemberRole.MEMBER,
+            )
+            session.add(member)
+            await session.flush()
+
+        synced_users.append(user)
+
+    return synced_users
+

@@ -190,6 +190,10 @@ class ApiClient {
     });
   }
 
+  async listProjectMembers(slug: string): Promise<any[]> {
+    return this.request(`/projects/${slug}/members`);
+  }
+
   // ── Boards & Columns ──
   async listBoards(projectSlug: string): Promise<any[]> {
     return this.request(`/projects/${projectSlug}/boards`);

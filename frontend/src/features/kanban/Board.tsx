@@ -57,13 +57,15 @@ export default function Board() {
     try {
       setLoading(true);
       
-      // 1. Fetch project info and team users
-      const [proj, userList] = await Promise.all([
+      // 1. Fetch project info, team members, and GitHub contributors
+      const [proj, memberList] = await Promise.all([
         api.getProject(projectSlug),
-        api.listUsers()
+        api.listProjectMembers(projectSlug).catch(async () => {
+          return await api.listUsers();
+        }),
       ]);
       setProject(proj);
-      setUsers(userList);
+      setUsers(memberList);
 
       // 2. Fetch boards (or create a default board if it doesn't exist)
       let boards = await api.listBoards(projectSlug);
@@ -443,6 +445,35 @@ export default function Board() {
                   <span className="text-zinc-500 block mb-1">Priority</span>
                   <span className="font-semibold text-white capitalize">{selectedIssue.priority}</span>
                 </div>
+                <div className="col-span-2 border-t border-zinc-800/60 pt-3">
+                  <span className="text-zinc-500 block mb-1">Assigned To</span>
+                  {(() => {
+                    const assignee = users.find((u) => u.id === (selectedIssue.assigneeId || (selectedIssue as any).assignee_id));
+                    if (!assignee) return <span className="text-zinc-600 italic">Unassigned</span>;
+                    const savedTitles = typeof window !== 'undefined' 
+                      ? JSON.parse(localStorage.getItem('devsync_contributor_titles') || '{}')
+                      : {};
+                    const roleTitle = savedTitles[assignee.username] || savedTitles[assignee.full_name];
+                    return (
+                      <div className="flex items-center gap-2.5 mt-1">
+                        <img
+                          src={assignee.avatar_url || `https://avatar.vercel.sh/${assignee.username}`}
+                          alt={assignee.full_name || assignee.username}
+                          className="h-6 w-6 rounded-full border border-zinc-700 object-cover bg-zinc-900"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://avatar.vercel.sh/${assignee.username}`;
+                          }}
+                        />
+                        <span className="font-semibold text-zinc-200">{assignee.full_name || assignee.username}</span>
+                        {roleTitle && (
+                          <span className="rounded bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-400">
+                            {roleTitle}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
 
@@ -532,18 +563,27 @@ export default function Board() {
               </div>
 
               <div>
-                <label className="block font-semibold text-zinc-400 mb-1">Assignee</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-zinc-400">Assignee</label>
+                  <span className="text-[10px] text-zinc-500 font-normal">Team & GitHub Contributors</span>
+                </div>
                 <select
                   value={newIssueAssignee}
                   onChange={(e) => setNewIssueAssignee(e.target.value)}
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-zinc-300 outline-none focus:border-indigo-600 transition-colors"
                 >
                   <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name || u.username}
-                    </option>
-                  ))}
+                  {users.map((u) => {
+                    const savedTitles = typeof window !== 'undefined' 
+                      ? JSON.parse(localStorage.getItem('devsync_contributor_titles') || '{}')
+                      : {};
+                    const roleTitle = savedTitles[u.username] || savedTitles[u.full_name];
+                    return (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name || u.username} {roleTitle ? `• ${roleTitle}` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
