@@ -1,19 +1,14 @@
 name: Backend CI/CD
 
+# Runs only when commits land on main (e.g. after merging develop).
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "backend/**"
       - "deploy/**"
       - ".github/workflows/backend.yml"
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - "backend/**"
-      - "deploy/**"
-      - ".github/workflows/backend.yml"
-  workflow_dispatch:
+  workflow_dispatch: # manual "Run workflow" button (deploy jobs still require main)
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -70,7 +65,7 @@ jobs:
   build:
     name: Build & push image
     needs: test
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -143,8 +138,8 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
           export API_IMAGE="$IMAGE"
           docker compose pull api
-          docker compose up -d db
-          docker compose run --rm api alembic upgrade head
+          # Migrations run against Neon before the new code goes live
+          docker compose run --rm --no-deps api alembic upgrade head
           docker compose up -d --remove-orphans
           # Remember the deployed image so manual `docker compose` commands use it
           sed -i '/^API_IMAGE=/d' .env && echo "API_IMAGE=$IMAGE" >> .env

@@ -1,33 +1,14 @@
-# Production stack for a single EC2 instance.
+# Production stack for a single EC2 instance. The database is Neon (managed Postgres),
+# so only the API and the Caddy reverse proxy run here.
 # CI copies this to the server as ~/devsync/docker-compose.yml.
 # Secrets come from ~/devsync/.env (created once by hand, see DEPLOYMENT.md).
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-devsync}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-projectboard}
-    # Tuned for a 1 GB instance
-    command: postgres -c shared_buffers=64MB -c max_connections=50
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   api:
     # CI exports API_IMAGE (ghcr.io/<owner>/devsync-backend:<sha>) when deploying
     image: ${API_IMAGE:?set API_IMAGE}
     restart: unless-stopped
     env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
     expose:
       - "8000"
     healthcheck:
@@ -53,6 +34,5 @@ services:
       - caddy_config:/config
 
 volumes:
-  pgdata:
   caddy_data:
   caddy_config:

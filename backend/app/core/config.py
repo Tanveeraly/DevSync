@@ -1,5 +1,8 @@
 """Application configuration loaded from environment variables."""
 
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +26,28 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/projectboard"
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        """Accept libpq-style URLs (e.g. copied from Neon) and adapt them for asyncpg.
+
+        asyncpg rejects `sslmode` and `channel_binding` query params; it expects `ssl`.
+        """
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                value = "postgresql+asyncpg://" + value[len(prefix):]
+        parts = urlsplit(value)
+        if not parts.query:
+            return value
+        params = []
+        for key, val in parse_qsl(parts.query, keep_blank_values=True):
+            if key == "channel_binding":
+                continue
+            if key == "sslmode":
+                key = "ssl"
+            params.append((key, val))
+        return urlunsplit(parts._replace(query=urlencode(params)))
 
     # ── Auth / JWT ───────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production"

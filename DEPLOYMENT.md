@@ -2,22 +2,33 @@
 
 | Part      | Where                                      | Pipeline                          |
 |-----------|--------------------------------------------|-----------------------------------|
-| Backend   | AWS EC2 (Docker Compose: API + Postgres + Caddy) | `.github/workflows/backend.yml`  |
+| Backend   | AWS EC2 (Docker Compose: API + Caddy)      | `.github/workflows/backend.yml`  |
+| Database  | Neon (managed serverless Postgres)         | migrations run on each deploy    |
 | Frontend  | Vercel                                     | `.github/workflows/frontend.yml` |
 
 ```
-Browser ─► Vercel (Next.js) ── rewrite /api/v1/* ─► https://API_DOMAIN ─► Caddy ─► FastAPI ─► Postgres
-   └──────────── WebSocket (wss://API_DOMAIN) ───────────┘                 (single EC2 instance)
+Browser ─► Vercel (Next.js) ── rewrite /api/v1/* ─► https://API_DOMAIN ─► Caddy ─► FastAPI ─► Neon Postgres
+   └──────────── WebSocket (wss://API_DOMAIN) ───────────┘   (EC2 instance)            (TLS)
 ```
 
 **How the pipelines run**
 
-- On a push or PR to `develop` or `main`: lint and test (backend), lint and build (frontend). PRs also get a Vercel preview deploy.
-- On a push to `main`: the backend image is built and pushed to GHCR, then deployed to EC2 (`alembic upgrade head` runs before the restart). The frontend goes to Vercel production.
-
-Each workflow only runs when files in its own folder change.
+- The pipelines run **only on a push to `main`**, for example when you merge `develop` into `main`. Pushes to `develop` and other branches, and pull requests, trigger nothing.
+- Backend: tests run, then the image is built and pushed to GHCR, then it's deployed to EC2 (`alembic upgrade head` runs before the restart).
+- Frontend: lint and build, then a deploy to Vercel production.
+- Each workflow only runs when files in its own folder change. You can also start one by hand from **Actions → Run workflow** on `main`.
 
 ---
+
+## 0. Neon (one time)
+
+1. Create a project at neon.tech. **Choose the AWS region closest to your EC2 instance**, ideally the same one (e.g. both `ap-southeast-1`). Every query crosses the network, so region matters.
+2. Go to **Dashboard → Connect** and **turn the "Connection pooling" toggle OFF** to get the *direct* host (no `-pooler` in the hostname). The API keeps its own connection pool, and Neon's pooler (PgBouncer in transaction mode) breaks asyncpg's prepared statements.
+3. Copy the connection string as-is into `DATABASE_URL` (step 1.6). The app rewrites `postgresql://…?sslmode=require&channel_binding=require` into the asyncpg form automatically.
+4. Free-plan notes:
+   - The compute suspends after about 5 minutes idle, so the first request after a pause is slower by roughly 0.5–1 s. `pool_pre_ping` reconnects automatically.
+   - Storage is capped at 0.5 GB per project.
+   - For backups, use Neon's point-in-time restore or create a branch before risky migrations.
 
 ## 1. AWS (one time)
 
@@ -100,10 +111,7 @@ Run these after `ssh ubuntu@<ELASTIC_IP>` and `cd ~/devsync`:
 docker compose ps                         # status
 docker compose logs -f api                # API logs
 docker compose logs caddy                 # TLS / proxy issues
-docker compose exec db psql -U devsync projectboard
-
-# Backup the database
-docker compose exec -T db pg_dump -U devsync projectboard | gzip > backup-$(date +%F).sql.gz
+docker compose run --rm --no-deps api alembic current   # migration state on Neon
 
 # Roll back to an older image (tags are the first 12 chars of the commit SHA)
 API_IMAGE=ghcr.io/<owner>/devsync-backend:<sha> docker compose up -d api
@@ -112,4 +120,5 @@ API_IMAGE=ghcr.io/<owner>/devsync-backend:<sha> docker compose up -d api
 **Notes**
 - The API runs as a **single uvicorn worker** on purpose. The WebSocket manager keeps state in memory, so multiple workers would split rooms between them.
 - If the GHCR package is private, the deploy job still pulls it with its own token. Pulling by hand on the server needs `docker login ghcr.io` with a PAT that has `read:packages`.
-- To move the database to RDS later, change `DATABASE_URL` in `.env` and remove the `db` service.
+- Database backups and browsing live in the Neon console (SQL Editor, Branches, Restore).
+- CI tests still use a throwaway Postgres container. They never touch Neon.
