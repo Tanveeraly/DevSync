@@ -19,13 +19,21 @@ export function useWebSocket({ projectId, onEvent }: UseWebSocketOptions) {
       wsRef.current.close();
     }
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Use api host but switch ports or protocols if needed
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
-    const host = apiBase.startsWith('http')
-      ? apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
-      : '127.0.0.1:8000';
-    const wsUrl = `${protocol}//${host}/api/v1/ws/${projectId}?token=${encodeURIComponent(token)}`;
+    // In production the HTTP API is proxied through Vercel, but Vercel cannot proxy
+    // WebSockets, so NEXT_PUBLIC_WS_URL points straight at the backend (e.g. wss://api.example.com).
+    const wsBase = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/$/, '');
+    let origin: string;
+    if (wsBase) {
+      origin = wsBase;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+      const host = apiBase.startsWith('http')
+        ? apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
+        : '127.0.0.1:8000';
+      origin = `${protocol}//${host}`;
+    }
+    const wsUrl = `${origin}/api/v1/ws/${projectId}?token=${encodeURIComponent(token)}`;
 
     const socket = new WebSocket(wsUrl);
     wsRef.current = socket;

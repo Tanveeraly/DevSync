@@ -1,0 +1,115 @@
+# Deployment
+
+| Part      | Where                                      | Pipeline                          |
+|-----------|--------------------------------------------|-----------------------------------|
+| Backend   | AWS EC2 (Docker Compose: API + Postgres + Caddy) | `.github/workflows/backend.yml`  |
+| Frontend  | Vercel                                     | `.github/workflows/frontend.yml` |
+
+```
+Browser ─► Vercel (Next.js) ── rewrite /api/v1/* ─► https://API_DOMAIN ─► Caddy ─► FastAPI ─► Postgres
+   └──────────── WebSocket (wss://API_DOMAIN) ───────────┘                 (single EC2 instance)
+```
+
+**How the pipelines run**
+
+- On a push or PR to `develop` or `main`: lint and test (backend), lint and build (frontend). PRs also get a Vercel preview deploy.
+- On a push to `main`: the backend image is built and pushed to GHCR, then deployed to EC2 (`alembic upgrade head` runs before the restart). The frontend goes to Vercel production.
+
+Each workflow only runs when files in its own folder change.
+
+---
+
+## 1. AWS (one time)
+
+1. **Launch an EC2 instance.** In the EC2 console, launch an instance with:
+   - AMI: **Ubuntu Server 24.04 LTS (x86_64)**
+   - Type: **t3.micro** (or whichever x86 type is marked *Free tier eligible* for your account). The image is built for amd64, so don't pick a Graviton type such as t4g.
+   - Storage: 20–30 GB gp3
+   - Key pair: create one and download the `.pem`
+2. **Security group, inbound rules:**
+   - 22/tcp: SSH. GitHub Actions runners use changing IPs, so this needs to be open to `0.0.0.0/0`. Key-only auth is the default on Ubuntu.
+   - 80/tcp from `0.0.0.0/0`: needed for the Let's Encrypt challenge.
+   - 443/tcp from `0.0.0.0/0`: HTTPS API.
+3. **Elastic IP.** Allocate one and associate it with the instance so the IP survives restarts.
+4. **Pick an API hostname.** If you have no domain, use sslip.io: an Elastic IP of `13.234.10.20` becomes `api.13-234-10-20.sslip.io`. If you have a domain, add an `A` record pointing at the Elastic IP.
+5. **Bootstrap the server** (Git Bash on your machine):
+   ```bash
+   scp -i devsync.pem deploy/setup-ec2.sh ubuntu@<ELASTIC_IP>:~
+   ssh -i devsync.pem ubuntu@<ELASTIC_IP> 'bash setup-ec2.sh'
+   ```
+6. **Create the production env file on the server:**
+   ```bash
+   scp -i devsync.pem deploy/.env.production.example ubuntu@<ELASTIC_IP>:~/devsync/.env
+   ssh -i devsync.pem ubuntu@<ELASTIC_IP>
+   nano ~/devsync/.env      # fill in every value
+   chmod 600 ~/devsync/.env
+   ```
+   `ENCRYPTION_KEY` must be exactly 32 characters. Don't change it once real data exists, or stored GitHub tokens can no longer be decrypted.
+
+## 2. Vercel (one time)
+
+1. Import the GitHub repo in Vercel. Framework: **Next.js**. **Root Directory: `frontend`**.
+2. Under **Settings → Environment Variables**, set these for Production and Preview:
+   | Name | Value |
+   |------|-------|
+   | `BACKEND_URL` | `https://api.13-234-10-20.sslip.io` |
+   | `NEXT_PUBLIC_WS_URL` | `wss://api.13-234-10-20.sslip.io` |
+
+   Leave `NEXT_PUBLIC_API_URL` **unset**. Requests then go through the `/api/v1` proxy, which keeps login cookies working.
+3. `frontend/vercel.json` turns off Vercel's own Git auto-deploys, so GitHub Actions is the only thing that deploys.
+4. Create an access token at vercel.com/account/tokens.
+5. Get the org and project IDs: run `npx vercel link` in the repo root, then read `.vercel/project.json` (`orgId`, `projectId`). Don't commit `.vercel/`.
+6. Copy your production URL (e.g. `https://devsync.vercel.app`) into `FRONTEND_URL` and `CORS_ORIGINS` in the server's `.env`.
+
+## 3. GitHub (one time)
+
+**Settings → Secrets and variables → Actions → New repository secret:**
+
+| Secret | Value |
+|--------|-------|
+| `EC2_HOST` | Elastic IP |
+| `EC2_USER` | `ubuntu` |
+| `EC2_SSH_KEY` | Full contents of `devsync.pem` |
+| `API_URL` | `https://api.13-234-10-20.sslip.io` (used for the post-deploy health check) |
+| `VERCEL_TOKEN` | Vercel token |
+| `VERCEL_ORG_ID` | `orgId` |
+| `VERCEL_PROJECT_ID` | `projectId` |
+
+`GITHUB_TOKEN` is provided automatically and is used to push and pull the image on GHCR.
+Optional: under **Settings → Environments → production**, add required reviewers to approve each production deploy.
+
+## 4. GitHub OAuth app
+
+In GitHub → Settings → Developer settings → OAuth Apps, set:
+- Homepage URL: `https://<your-app>.vercel.app`
+- Callback URL: `https://<your-app>.vercel.app/api/v1/github/callback`. This goes through the Vercel proxy, and it must match `GITHUB_REDIRECT_URI` in the server `.env`.
+
+## 5. First deploy
+
+Merge `develop` into `main` and push. Watch the **Actions** tab. Then open:
+- `https://API_DOMAIN/docs` for the API
+- `https://<your-app>.vercel.app` for the app
+
+---
+
+## Operations
+
+Run these after `ssh ubuntu@<ELASTIC_IP>` and `cd ~/devsync`:
+
+```bash
+docker compose ps                         # status
+docker compose logs -f api                # API logs
+docker compose logs caddy                 # TLS / proxy issues
+docker compose exec db psql -U devsync projectboard
+
+# Backup the database
+docker compose exec -T db pg_dump -U devsync projectboard | gzip > backup-$(date +%F).sql.gz
+
+# Roll back to an older image (tags are the first 12 chars of the commit SHA)
+API_IMAGE=ghcr.io/<owner>/devsync-backend:<sha> docker compose up -d api
+```
+
+**Notes**
+- The API runs as a **single uvicorn worker** on purpose. The WebSocket manager keeps state in memory, so multiple workers would split rooms between them.
+- If the GHCR package is private, the deploy job still pulls it with its own token. Pulling by hand on the server needs `docker login ghcr.io` with a PAT that has `read:packages`.
+- To move the database to RDS later, change `DATABASE_URL` in `.env` and remove the `db` service.

@@ -1,0 +1,161 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: projectboard
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # conftest.py derives the test DB by replacing /projectboard -> /projectboard_test
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/projectboard
+      SECRET_KEY: ci-secret-key
+      ENCRYPTION_KEY: ci-encryption-key-32-bytes-long!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff (non-blocking until existing issues are fixed)
+        continue-on-error: true
+        run: ruff check .
+
+      - name: Create test database
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE projectboard_test"
+
+      - name: Migrations apply cleanly
+        run: alembic upgrade head
+
+      - name: Pytest
+        run: pytest -q
+
+  build:
+    name: Build & push image
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image name
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "image=ghcr.io/${owner}/devsync-backend:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "latest=ghcr.io/${owner}/devsync-backend:latest" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE: ${{ needs.build.outputs.image }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload compose files
+        run: |
+          scp -i ~/.ssh/deploy_key deploy/docker-compose.prod.yml "$EC2_USER@$EC2_HOST:~/devsync/docker-compose.yml"
+          scp -i ~/.ssh/deploy_key deploy/Caddyfile "$EC2_USER@$EC2_HOST:~/devsync/Caddyfile"
+
+      - name: Pull image, migrate, restart
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
+            "IMAGE='$IMAGE' GHCR_USER='${{ github.actor }}' GHCR_TOKEN='${{ secrets.GITHUB_TOKEN }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd ~/devsync
+          test -f .env || { echo "~/devsync/.env is missing - see DEPLOYMENT.md"; exit 1; }
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          export API_IMAGE="$IMAGE"
+          docker compose pull api
+          docker compose up -d db
+          docker compose run --rm api alembic upgrade head
+          docker compose up -d --remove-orphans
+          # Remember the deployed image so manual `docker compose` commands use it
+          sed -i '/^API_IMAGE=/d' .env && echo "API_IMAGE=$IMAGE" >> .env
+          docker logout ghcr.io
+          docker image prune -f
+          REMOTE
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "${{ secrets.API_URL }}/" ; then echo; echo "API is up"; exit 0; fi
+            sleep 6
+          done
+          echo "API did not become healthy"; exit 1
