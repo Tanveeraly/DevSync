@@ -7,6 +7,12 @@ from app.models.comment import Comment  # noqa: F401
 from app.models.github_token import GitHubToken  # noqa: F401
 from app.models.issue import Issue  # noqa: F401
 from app.models.project import Project, ProjectMember  # noqa: F401
+from app.models.project_invitation import ProjectInvitation  # noqa: F401
+from app.models.pull_request import (  # noqa: F401
+    PullRequest,
+    PullRequestDependency,
+    PullRequestIssueLink,
+)
 from app.models.user import User  # noqa: F401
 
 __all__ = [
@@ -15,6 +21,10 @@ __all__ = [
     "User",
     "Project",
     "ProjectMember",
+    "ProjectInvitation",
+    "PullRequest",
+    "PullRequestDependency",
+    "PullRequestIssueLink",
     "Board",
     "Column",
     "Issue",

@@ -5,20 +5,19 @@ Revises: 816576012475
 Create Date: 2026-10-08 00:00:00.000000
 """
 
-from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
+from collections.abc import Sequence
 
 revision: str = "a4f0c1b2d3e4"
-down_revision: Union[str, None] = "816576012475"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "816576012475"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index(op.f("ix_users_github_id"), "users", ["github_id"], unique=True)
+    # The initial migration already creates this index.
+    pass
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_users_github_id"), table_name="users")
+    # The initial migration owns this index.
+    pass

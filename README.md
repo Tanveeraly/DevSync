@@ -10,6 +10,8 @@ When multiple developers work on one project, things break down: two people fix 
 - **Optimistic Locking** — second save gets a 409 conflict, not a silent overwrite
 - **Live WebSocket Broadcast** — every move/edit appears instantly for everyone
 - **GitHub Webhooks** — PR merged = task auto-moves to Done
+- **Project-scoped access** — only explicitly added project members can view its boards and tasks; GitHub collaborators are previewed before being added
+- **Member invitations** — project Owners/Admins can add existing DevSync users or invite new users by email
 
 ## Architecture
 
@@ -58,6 +60,12 @@ python -m venv .venv
 .venv/Scripts/activate  # Windows
 pip install -e .
 uvicorn app.main:app --reload
+```
+
+After updating the backend, apply database migrations from the `backend` directory:
+
+```bash
+alembic upgrade head
 ```
 
 ## Project Structure

@@ -12,7 +12,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
@@ -29,10 +28,19 @@ export default function LoginPage() {
       // Save tokens
       localStorage.setItem('access_token', data.access_token);
       localStorage.setItem('refresh_token', data.refresh_token);
-      // Redirect to dashboard
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please check your credentials.');
+      // Return to the invitation after authenticating when this is an invite flow.
+      const invitationToken = new URLSearchParams(window.location.search).get('invite');
+      router.push(
+        invitationToken
+          ? `/invitation?token=${encodeURIComponent(invitationToken)}`
+          : '/dashboard',
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Authentication failed. Please check your credentials.',
+      );
     } finally {
       setLoading(false);
     }
@@ -123,7 +131,17 @@ export default function LoginPage() {
 
         <div className="mt-8 text-center text-xs text-zinc-500 border-t border-zinc-900 pt-6">
           New to DevSync?{' '}
-          <Link href="/register" className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline">
+          <Link
+            href="/register"
+            onClick={(event) => {
+              const invitationToken = new URLSearchParams(window.location.search).get('invite');
+              if (invitationToken) {
+                event.preventDefault();
+                router.push(`/register?invite=${encodeURIComponent(invitationToken)}`);
+              }
+            }}
+            className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
+          >
             Create an account
           </Link>
         </div>

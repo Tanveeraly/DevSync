@@ -10,7 +10,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   FolderDot,
-  Plus
+  Plus,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -124,24 +125,33 @@ export default function Sidebar({ className, user, projects = [], onCreateProjec
                   : 'No Git Link';
                 
                 return (
-                  <Link
-                    key={project.id}
-                    href={projectPath}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all",
-                      isActive 
-                        ? "bg-[var(--surface-muted)] text-[var(--foreground)] font-semibold" 
-                        : "hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
-                    )}
-                  >
-                    <FolderDot size={18} className={isActive ? "text-indigo-400" : "text-[var(--muted)]"} />
-                    {!collapsed && (
-                      <div className="truncate flex-1">
-                        <div className="truncate font-medium">{project.name}</div>
-                        <div className="text-[10px] text-[var(--muted)] truncate">{repoName}</div>
-                      </div>
-                    )}
-                  </Link>
+                  <div key={project.id} className="group flex items-center rounded-lg">
+                    <Link
+                      href={projectPath}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all",
+                        isActive
+                          ? "bg-[var(--surface-muted)] text-[var(--foreground)] font-semibold"
+                          : "hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]"
+                      )}
+                    >
+                      <FolderDot size={18} className={isActive ? "text-indigo-400" : "text-[var(--muted)]"} />
+                      {!collapsed && (
+                        <div className="truncate flex-1">
+                          <div className="truncate font-medium">{project.name}</div>
+                          <div className="text-[10px] text-[var(--muted)] truncate">{repoName}</div>
+                        </div>
+                      )}
+                    </Link>
+                    <Link
+                      href={`${projectPath}/settings/members`}
+                      aria-label={`Manage ${project.name} members`}
+                      title="Project settings: Members"
+                      className="mr-1 rounded-md p-1.5 text-[var(--muted)] opacity-0 transition-all hover:bg-[var(--surface-muted)] hover:text-indigo-400 group-hover:opacity-100 focus:opacity-100"
+                    >
+                      <UsersRound size={15} />
+                    </Link>
+                  </div>
                 );
               })
             ) : (

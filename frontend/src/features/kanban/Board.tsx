@@ -60,9 +60,7 @@ export default function Board() {
       // 1. Fetch project info, team members, and GitHub contributors
       const [proj, memberList] = await Promise.all([
         api.getProject(projectSlug),
-        api.listProjectMembers(projectSlug).catch(async () => {
-          return await api.listUsers();
-        }),
+        api.listProjectMembers(projectSlug),
       ]);
       setProject(proj);
       setUsers(memberList);

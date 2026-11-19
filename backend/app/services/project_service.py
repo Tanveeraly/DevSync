@@ -2,8 +2,8 @@ import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.project import MemberRole, Project, ProjectMember
 from app.models.user import User
@@ -115,7 +115,8 @@ async def add_project_member(
 ) -> ProjectMember:
     # Check if user exists
     user_result = await session.execute(select(User).where(User.id == user_id))
-    if not user_result.scalar_one_or_none():
+    user = user_result.scalar_one_or_none()
+    if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User to add not found",
@@ -123,7 +124,9 @@ async def add_project_member(
     
     # Check if member already exists
     member_result = await session.execute(
-        select(ProjectMember).where(
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .where(
             (ProjectMember.project_id == project_id) & (ProjectMember.user_id == user_id)
         )
     )
@@ -137,6 +140,7 @@ async def add_project_member(
         project_id=project_id,
         user_id=user_id,
         role=role,
+        user=user,
     )
     session.add(member)
     await session.flush()
@@ -173,58 +177,45 @@ async def check_user_membership(session: AsyncSession, project_id: uuid.UUID, us
     return result.scalar_one_or_none()
 
 
-async def sync_project_contributors(
-    session: AsyncSession, project_id: uuid.UUID, contributors: list[dict]
-) -> list[User]:
-    """Ensure GitHub contributors exist as active Users and ProjectMembers so issues can be assigned to them."""
-    synced_users: list[User] = []
-    for c in contributors:
-        username = str(c.get("name") or c.get("login") or "").strip()
-        if not username or username.lower() == "unknown":
-            continue
-
-        avatar_url = c.get("avatarUrl") or c.get("avatar_url") or None
-        email = f"{username.lower()}@users.noreply.github.com"
-
-        # Check by username or email
-        res = await session.execute(
-            select(User).where((User.username.ilike(username)) | (User.email == email))
+async def list_project_memberships(
+    session: AsyncSession, project_id: uuid.UUID
+) -> list[ProjectMember]:
+    result = await session.execute(
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .join(ProjectMember.user)
+        .where(
+            ProjectMember.project_id == project_id,
+            User.is_active.is_(True),
         )
-        user = res.scalar_one_or_none()
+        .order_by(ProjectMember.created_at, ProjectMember.id)
+    )
+    return list(result.scalars().all())
 
-        if not user:
-            user = User(
-                username=username,
-                full_name=username,
-                email=email,
-                avatar_url=avatar_url,
-                is_active=True,
-            )
-            session.add(user)
-            await session.flush()
-        else:
-            if avatar_url and not user.avatar_url:
-                user.avatar_url = avatar_url
-            if not user.full_name:
-                user.full_name = username
-            await session.flush()
 
-        # Ensure project membership
-        mem_res = await session.execute(
-            select(ProjectMember).where(
-                (ProjectMember.project_id == project_id) & (ProjectMember.user_id == user.id)
-            )
+async def update_project_member_role(
+    session: AsyncSession, project_id: uuid.UUID, user_id: uuid.UUID, role: MemberRole
+) -> ProjectMember:
+    result = await session.execute(
+        select(ProjectMember)
+        .options(selectinload(ProjectMember.user))
+        .where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == user_id,
         )
-        if not mem_res.scalar_one_or_none():
-            member = ProjectMember(
-                project_id=project_id,
-                user_id=user.id,
-                role=MemberRole.MEMBER,
-            )
-            session.add(member)
-            await session.flush()
-
-        synced_users.append(user)
-
-    return synced_users
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project member not found",
+        )
+    if member.role == MemberRole.OWNER or role == MemberRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project ownership cannot be changed here",
+        )
+    member.role = role
+    await session.flush()
+    return member
 

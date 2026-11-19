@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import uuid
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.pull_request import PullRequest
 
 
 class MemberRole(StrEnum):
@@ -44,6 +48,9 @@ class Project(TimestampMixin, Base):
     )
     issues: Mapped[list[Issue]] = relationship(  # noqa: F821
         "Issue", back_populates="project", cascade="all, delete-orphan", lazy="selectin",
+    )
+    pull_requests: Mapped[list[PullRequest]] = relationship(  # noqa: F821
+        "PullRequest", back_populates="project", cascade="all, delete-orphan", lazy="selectin",
     )
     activities: Mapped[list[ActivityLog]] = relationship(  # noqa: F821
         "ActivityLog", back_populates="project", cascade="all, delete-orphan", lazy="selectin",

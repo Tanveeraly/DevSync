@@ -7,45 +7,67 @@ import RepoOverview from '@/features/dashboard/RepoOverview';
 import ContributorGraph from '@/features/dashboard/ContributorGraph';
 import RecentActivity from '@/features/dashboard/RecentActivity';
 import { api } from '@/lib/api';
-import { FolderPlus, Rocket, Zap, GitMerge, ArrowRight, Link2 } from 'lucide-react';
+import { FolderPlus, Rocket, Zap, GitMerge, ArrowRight, Link2, ChevronDown, Loader2 } from 'lucide-react';
 import CreateProjectModal from '@/components/ui/CreateProjectModal';
 import SetGithubRepoModal from '@/components/ui/SetGithubRepoModal';
 import { useRouter } from 'next/navigation';
 
+interface DashboardProject {
+  id: string;
+  name: string;
+  slug: string;
+  github_repo_url?: string | null;
+}
+
+interface DashboardData {
+  projects: DashboardProject[];
+  users: Record<string, unknown>[];
+  issues: Record<string, unknown>[];
+  activities: Record<string, unknown>[];
+}
+
+interface GithubStats {
+  error?: string | null;
+  open_prs_count?: number;
+  commits_by_day?: Record<string, unknown>[];
+  contributors?: Record<string, unknown>[];
+  recent_commits?: Record<string, unknown>[];
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const [data, setData] = useState<{ projects: any[]; users: any[]; issues: any[]; activities: any[] }>({
+  const [data, setData] = useState<DashboardData>({
     projects: [],
     users: [],
     issues: [],
     activities: [],
   });
-  const [githubStats, setGithubStats] = useState<any>(null);
+  const [githubStats, setGithubStats] = useState<GithubStats | null>(null);
   const [githubConnection, setGithubConnection] = useState<{ linked: boolean; loading: boolean }>({ linked: false, loading: true });
   const [loading, setLoading] = useState(true);
+  const [projectDataLoading, setProjectDataLoading] = useState(false);
+  const [projectDataError, setProjectDataError] = useState('');
+  const [selectedProjectSlug, setSelectedProjectSlug] = useState('');
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showSetGithubModal, setShowSetGithubModal] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const dashboardData = await api.getDashboardData();
-      setData(dashboardData);
-
-      const status = await api.getGithubStatus();
+      const [projects, status] = await Promise.all([
+        api.listProjects(),
+        api.getGithubStatus(),
+      ]);
+      setData({ projects, users: [], issues: [], activities: [] });
+      setGithubStats(null);
+      setProjectDataError('');
+      setProjectDataLoading(projects.length > 0);
+      setSelectedProjectSlug((currentSlug) =>
+        projects.some((project: DashboardProject) => project.slug === currentSlug)
+          ? currentSlug
+          : projects[0]?.slug || '',
+      );
       setGithubConnection({ linked: status.linked, loading: false });
-
-      if (dashboardData.projects.length > 0 && status.linked) {
-        const firstSlug = dashboardData.projects[0].slug;
-        try {
-          const stats = await api.getGithubStats(firstSlug);
-          setGithubStats(stats);
-        } catch (err) {
-          setGithubStats({ error: err instanceof Error ? err.message : 'Unable to load GitHub statistics.' });
-        }
-      } else {
-        setGithubStats(null);
-      }
     } catch (err) {
       setGithubConnection({ linked: false, loading: false });
       console.error('Failed to load dashboard data:', err);
@@ -55,10 +77,55 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    loadDashboard();
+    void Promise.resolve().then(loadDashboard);
   }, [loadDashboard]);
 
-  const handleProjectCreated = async (project: any) => {
+  useEffect(() => {
+    const project = data.projects.find((item) => item.slug === selectedProjectSlug);
+    if (!project) return;
+
+    let active = true;
+
+    const loadSelectedProject = async () => {
+      try {
+        const [issues, activities, users] = await Promise.all([
+          api.listIssues(project.slug),
+          api.listActivities(project.slug),
+          api.listProjectMembers(project.slug),
+        ]);
+        if (active) {
+          setData((currentData) => ({ ...currentData, issues, activities, users }));
+        }
+      } catch (err) {
+        if (active) {
+          setProjectDataError(
+            err instanceof Error ? err.message : 'Unable to load selected project data.',
+          );
+        }
+      }
+
+      if (active && githubConnection.linked && project.github_repo_url) {
+        try {
+          const stats = await api.getGithubStats(project.slug);
+          if (active) setGithubStats(stats);
+        } catch (err) {
+          if (active) {
+            setGithubStats({
+              error: err instanceof Error ? err.message : 'Unable to load GitHub statistics.',
+            });
+          }
+        }
+      }
+      if (active) setProjectDataLoading(false);
+    };
+
+    void Promise.resolve().then(loadSelectedProject);
+    return () => {
+      active = false;
+    };
+  }, [data.projects, selectedProjectSlug, githubConnection.linked]);
+
+  const handleProjectCreated = async (project: DashboardProject) => {
     setShowCreateProject(false);
     router.push(`/board/${project.slug}`);
   };
@@ -76,7 +143,8 @@ export default function DashboardPage() {
     await loadDashboard();
   };
 
-  const activeProject = data.projects.length > 0 ? data.projects[0] : null;
+  const activeProject =
+    data.projects.find((project) => project.slug === selectedProjectSlug) || null;
   const hasRepositoryUrl = Boolean(activeProject?.github_repo_url);
 
   // Empty state — no projects yet
@@ -98,7 +166,7 @@ export default function DashboardPage() {
 
           <h3 className="text-2xl font-extrabold text-white mb-3">No Projects Yet</h3>
           <p className="text-zinc-400 text-sm max-w-md mb-8 leading-relaxed">
-            Create your first project to start syncing your team's work. Each project gets its own
+            Create your first project to start syncing your team&apos;s work. Each project gets its own
             real-time Kanban board with collision prevention and live WebSocket updates.
           </p>
 
@@ -152,6 +220,39 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {data.projects.length > 0 && (
+            <label className="relative flex items-center">
+              <span className="sr-only">Select project for dashboard stats</span>
+              <select
+                value={selectedProjectSlug}
+                onChange={(event) => {
+                  setSelectedProjectSlug(event.target.value);
+                  setProjectDataLoading(true);
+                  setProjectDataError('');
+                  setData((currentData) => ({
+                    ...currentData,
+                    users: [],
+                    issues: [],
+                    activities: [],
+                  }));
+                  setGithubStats(null);
+                }}
+                aria-label="Select project for dashboard stats"
+                className="min-w-48 appearance-none rounded-lg border border-zinc-800 bg-[#0f0f12] py-2 pl-3 pr-9 text-xs font-medium text-zinc-200 outline-none transition focus:border-indigo-500"
+              >
+                {data.projects.map((project) => (
+                  <option key={project.id} value={project.slug}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 text-zinc-500"
+              />
+            </label>
+          )}
           {activeProject && (
             <button
               onClick={() => setShowSetGithubModal(true)}
@@ -170,6 +271,18 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {projectDataLoading && (
+        <div className="flex items-center gap-2 text-xs text-zinc-500" role="status">
+          <Loader2 size={13} className="animate-spin text-indigo-400" />
+          Loading {activeProject?.name} statistics...
+        </div>
+      )}
+      {projectDataError && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-4 py-2.5 text-xs text-rose-300" role="alert">
+          {projectDataError}
+        </div>
+      )}
 
       {/* Main Metrics cards */}
       <StatsCards

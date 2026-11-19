@@ -1,5 +1,80 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
 
+export type ProjectRole = 'owner' | 'admin' | 'member';
+export type AssignableProjectRole = 'admin' | 'member';
+
+export interface ProjectUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  github_repo_url?: string | null;
+}
+
+export interface ProjectMembership {
+  id: string;
+  project_id: string;
+  user_id: string;
+  user: ProjectUser;
+  role: ProjectRole;
+  created_at: string;
+}
+
+export interface ProjectMemberships {
+  members: ProjectMembership[];
+  current_user_role: ProjectRole;
+}
+
+export interface GithubCollaboratorPreview {
+  login: string;
+  avatar_url?: string | null;
+  html_url?: string | null;
+  permission?: string | null;
+  user: ProjectUser | null;
+  is_member: boolean;
+}
+
+export interface PullRequestBlocker {
+  id: string;
+  github_number: number;
+  title: string;
+  url: string;
+}
+
+export interface PullRequestQueueItem {
+  id: string;
+  project_id: string;
+  github_number: number;
+  url: string;
+  title: string;
+  head_branch: string | null;
+  state: string;
+  is_draft: boolean;
+  check_summary: string | null;
+  review_summary: string | null;
+  github_updated_at: string | null;
+  merged_at: string | null;
+  last_synced_at: string | null;
+  queue_position: number;
+  linked_issue_id: string | null;
+  linked_issue_title: string | null;
+  ready: boolean;
+  blocked_by: PullRequestBlocker[];
+}
+
+export interface PullRequestIssueOption {
+  id: string;
+  title: string;
+}
+
 class ApiClient {
   private getHeaders(isFormData = false): HeadersInit {
     const headers: Record<string, string> = {};
@@ -117,7 +192,7 @@ class ApiClient {
     });
   }
 
-  async getMe(): Promise<any> {
+  async getMe(): Promise<ProjectUser> {
     return this.request('/auth/me');
   }
 
@@ -145,7 +220,7 @@ class ApiClient {
     return this.request('/projects');
   }
 
-  async getProject(slug: string): Promise<any> {
+  async getProject(slug: string): Promise<ProjectSummary> {
     return this.request(`/projects/${slug}`);
   }
 
@@ -194,6 +269,48 @@ class ApiClient {
     return this.request(`/projects/${slug}/members`);
   }
 
+  async getProjectMemberships(slug: string): Promise<ProjectMemberships> {
+    return this.request(`/projects/${slug}/memberships`);
+  }
+
+  async inviteProjectMember(
+    slug: string,
+    data: { email: string; role: AssignableProjectRole },
+  ): Promise<{ status: 'added' | 'invited'; email: string }> {
+    return this.request(`/projects/${slug}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProjectMember(
+    slug: string,
+    userId: string,
+    role: AssignableProjectRole,
+  ): Promise<ProjectMembership> {
+    return this.request(`/projects/${slug}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async removeProjectMember(slug: string, userId: string): Promise<void> {
+    return this.request(`/projects/${slug}/members/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async previewGithubCollaborators(slug: string): Promise<GithubCollaboratorPreview[]> {
+    return this.request(`/projects/${slug}/github/collaborators`);
+  }
+
+  async acceptProjectInvitation(token: string): Promise<{ project_slug: string; project_name: string; role: string }> {
+    return this.request('/invitations/accept', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
   // ── Boards & Columns ──
   async listBoards(projectSlug: string): Promise<any[]> {
     return this.request(`/projects/${projectSlug}/boards`);
@@ -240,6 +357,67 @@ class ApiClient {
     return this.request(`/issues/${issueId}`, {
       method: 'DELETE',
     });
+  }
+
+  // ── Pull Request Queue ──
+  async listPullRequests(projectSlug: string): Promise<PullRequestQueueItem[]> {
+    return this.request(`/projects/${projectSlug}/pull-requests`);
+  }
+
+  async syncPullRequests(projectSlug: string): Promise<PullRequestQueueItem[]> {
+    return this.request(`/projects/${projectSlug}/pull-requests/sync`, {
+      method: 'POST',
+    });
+  }
+
+  async reorderPullRequests(
+    projectSlug: string,
+    numbers: number[],
+  ): Promise<PullRequestQueueItem[]> {
+    return this.request(`/projects/${projectSlug}/pull-requests/order`, {
+      method: 'PATCH',
+      body: JSON.stringify({ numbers }),
+    });
+  }
+
+  async addPullRequestDependency(
+    projectSlug: string,
+    pullRequestNumber: number,
+    blockedByNumber: number,
+  ): Promise<PullRequestQueueItem[]> {
+    return this.request(
+      `/projects/${projectSlug}/pull-requests/${pullRequestNumber}/dependencies`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ blocked_by_pull_request_number: blockedByNumber }),
+      },
+    );
+  }
+
+  async removePullRequestDependency(
+    projectSlug: string,
+    pullRequestNumber: number,
+    blockedByNumber: number,
+  ): Promise<PullRequestQueueItem[]> {
+    return this.request(
+      `/projects/${projectSlug}/pull-requests/${pullRequestNumber}/dependencies/${blockedByNumber}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  async linkPullRequestIssue(
+    projectSlug: string,
+    pullRequestNumber: number,
+    issueId: string,
+  ): Promise<PullRequestQueueItem[]> {
+    return this.request(`/projects/${projectSlug}/pull-requests/${pullRequestNumber}/issue`, {
+      method: 'PUT',
+      body: JSON.stringify({ issue_id: issueId }),
+    });
+  }
+
+  async listPullRequestIssues(projectSlug: string): Promise<PullRequestIssueOption[]> {
+    return this.request(`/projects/${projectSlug}/issues`);
   }
 
   // ── Comments ──

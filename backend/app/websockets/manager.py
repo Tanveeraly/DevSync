@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -29,17 +32,37 @@ class ConnectionManager:
     def __init__(self) -> None:
         # channel_id -> set of connected websockets
         self._channels: dict[str, set[WebSocket]] = defaultdict(set)
+        self._connection_users: dict[WebSocket, str] = {}
 
-    async def connect(self, websocket: WebSocket, channel: str) -> None:
+    async def connect(
+        self, websocket: WebSocket, channel: str, user_id: str | None = None
+    ) -> None:
         """Accept the websocket and register it to *channel*."""
         await websocket.accept()
         self._channels[channel].add(websocket)
+        if user_id is not None:
+            self._connection_users[websocket] = user_id
 
     def disconnect(self, websocket: WebSocket, channel: str) -> None:
         """Remove *websocket* from *channel*."""
         self._channels[channel].discard(websocket)
+        self._connection_users.pop(websocket, None)
         if not self._channels[channel]:
             del self._channels[channel]
+
+    async def revoke_user(self, channel: str, user_id: str) -> None:
+        """Close a member's open connections after their project access is revoked."""
+        connections = [
+            websocket
+            for websocket in self._channels.get(channel, set())
+            if self._connection_users.get(websocket) == user_id
+        ]
+        for websocket in connections:
+            self.disconnect(websocket, channel)
+            try:
+                await websocket.close(code=1008, reason="Project access revoked")
+            except Exception:
+                logger.debug("Unable to close revoked WebSocket connection", exc_info=True)
 
     async def broadcast(self, channel: str, message: str | dict) -> None:
         """Send *message* to every connection in *channel*.

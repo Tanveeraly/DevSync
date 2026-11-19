@@ -36,7 +36,7 @@ async def websocket_endpoint(
     websocket: WebSocket,
     project_id: str,
     token: Annotated[str, Query()],
-    session: AsyncSession = Depends(get_async_session),
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     # 1. Authenticate user
     user = await get_ws_user(token, session)
@@ -56,7 +56,7 @@ async def websocket_endpoint(
         
     # 3. Connect to the WebSocket room/channel
     channel = str(project_id)
-    await ws_manager.connect(websocket, channel)
+    await ws_manager.connect(websocket, channel, str(user.id))
     
     try:
         while True:

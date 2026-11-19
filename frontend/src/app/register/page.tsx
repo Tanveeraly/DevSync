@@ -14,7 +14,6 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !username || !password) {
@@ -39,10 +38,19 @@ export default function RegisterPage() {
       localStorage.setItem('access_token', authData.access_token);
       localStorage.setItem('refresh_token', authData.refresh_token);
 
-      // 3. Redirect to dashboard
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Registration failed. Please check your information.');
+      // Return to the invitation after account creation when this is an invite flow.
+      const invitationToken = new URLSearchParams(window.location.search).get('invite');
+      router.push(
+        invitationToken
+          ? `/invitation?token=${encodeURIComponent(invitationToken)}`
+          : '/dashboard',
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Registration failed. Please check your information.',
+      );
     } finally {
       setLoading(false);
     }
@@ -167,7 +175,17 @@ export default function RegisterPage() {
 
         <div className="mt-8 text-center text-xs text-zinc-500 border-t border-zinc-900 pt-6">
           Already have an account?{' '}
-          <Link href="/login" className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline">
+          <Link
+            href="/login"
+            onClick={(event) => {
+              const invitationToken = new URLSearchParams(window.location.search).get('invite');
+              if (invitationToken) {
+                event.preventDefault();
+                router.push(`/login?invite=${encodeURIComponent(invitationToken)}`);
+              }
+            }}
+            className="font-semibold text-indigo-400 hover:text-indigo-300 hover:underline"
+          >
             Sign In
           </Link>
         </div>

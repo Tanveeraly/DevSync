@@ -98,6 +98,38 @@ async def get_github_repositories(token: str) -> list[dict[str, object]]:
         return repositories
 
 
+async def get_github_collaborators(
+    token: str, repository: str
+) -> list[dict[str, object]]:
+    """List repository collaborators visible to the linked GitHub account."""
+    normalized_repository = normalize_github_repository(repository)
+    collaborators: list[dict[str, object]] = []
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        page = 1
+        while True:
+            response = await client.get(
+                f"{GITHUB_API}/repos/{normalized_repository}/collaborators",
+                headers=headers,
+                params={"per_page": 100, "page": page},
+            )
+            response.raise_for_status()
+            page_items = response.json()
+            if not isinstance(page_items, list):
+                raise ValueError("GitHub returned an invalid collaborator list")
+            collaborators.extend(
+                item for item in page_items if isinstance(item, dict)
+            )
+            if len(page_items) < 100:
+                return collaborators
+            page += 1
+
+
 async def link_github_account(
     session: AsyncSession,
     user: User,
