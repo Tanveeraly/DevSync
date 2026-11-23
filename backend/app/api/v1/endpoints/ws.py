@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_async_session
+from app.core.database import async_session_factory, get_async_session
 from app.core.security import decode_token
 from app.models.project import ProjectMember
 from app.models.user import User
@@ -29,6 +29,33 @@ async def get_ws_user(token: str, session: AsyncSession) -> User | None:
     except Exception:
         pass
     return None
+
+
+# Must be registered before "/ws/{project_id}" so it isn't captured by that route.
+@router.websocket("/ws/notifications")
+async def notifications_websocket(
+    websocket: WebSocket,
+    token: Annotated[str, Query()],
+):
+    """Personal channel: only this user's own notifications are pushed here."""
+    # Short-lived session: every open tab holds this socket, so don't pin a DB connection to it.
+    async with async_session_factory() as session:
+        user = await get_ws_user(token, session)
+    if not user:
+        await websocket.close(code=1008)
+        return
+
+    channel = f"user:{user.id}"
+    await ws_manager.connect(websocket, channel, str(user.id))
+    try:
+        while True:
+            # Server-push only; reading keeps the connection open and detects disconnects.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, channel)
+    except Exception as e:
+        logger.error(f"Notification WebSocket error: {e}")
+        ws_manager.disconnect(websocket, channel)
 
 
 @router.websocket("/ws/{project_id}")
