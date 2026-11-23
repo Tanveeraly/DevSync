@@ -70,6 +70,32 @@ export interface PullRequestQueueItem {
   blocked_by: PullRequestBlocker[];
 }
 
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  project_id: string | null;
+  issue_id: string | null;
+  actor_id: string | null;
+  type: string;
+  title: string;
+  message: string | null;
+  data: {
+    project_name?: string;
+    project_slug?: string;
+    project_description?: string | null;
+    issue_title?: string;
+    issue_description?: string | null;
+    priority?: string;
+    status?: string;
+    labels?: string[];
+    branch_name?: string | null;
+    assigned_by?: string;
+    link?: string;
+  } | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 export interface PullRequestIssueOption {
   id: string;
   title: string;
@@ -357,6 +383,23 @@ class ApiClient {
     return this.request(`/issues/${issueId}`, {
       method: 'DELETE',
     });
+  }
+
+  // ── Notifications (only the current user's own) ──
+  async listNotifications(limit = 30): Promise<AppNotification[]> {
+    return this.request(`/notifications?limit=${limit}`);
+  }
+
+  async getUnreadNotificationCount(): Promise<{ unread: number }> {
+    return this.request('/notifications/unread-count');
+  }
+
+  async markNotificationRead(notificationId: string): Promise<AppNotification> {
+    return this.request(`/notifications/${notificationId}/read`, { method: 'POST' });
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    return this.request('/notifications/read-all', { method: 'POST' });
   }
 
   // ── Pull Request Queue ──

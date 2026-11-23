@@ -6,6 +6,7 @@ from app.models.board import Board, Column  # noqa: F401
 from app.models.comment import Comment  # noqa: F401
 from app.models.github_token import GitHubToken  # noqa: F401
 from app.models.issue import Issue  # noqa: F401
+from app.models.notification import Notification  # noqa: F401
 from app.models.project import Project, ProjectMember  # noqa: F401
 from app.models.project_invitation import ProjectInvitation  # noqa: F401
 from app.models.pull_request import (  # noqa: F401
@@ -31,4 +32,5 @@ __all__ = [
     "Comment",
     "ActivityLog",
     "GitHubToken",
+    "Notification",
 ]

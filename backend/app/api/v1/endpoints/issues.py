@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, BackgroundTasks, status
 
 from app.api.deps import CurrentUser, DBSession
 from app.api.v1.endpoints.projects import check_access, get_project_by_slug
@@ -14,6 +14,7 @@ from app.services.issue_service import (
     move_issue_position,
     update_issue,
 )
+from app.services.notification_service import ensure_assignee_is_member, notify_issue_assigned
 from app.websockets.manager import manager as ws_manager
 
 router = APIRouter()
@@ -21,14 +22,20 @@ router = APIRouter()
 
 @router.post("/projects/{slug}/issues", response_model=IssueRead, status_code=status.HTTP_201_CREATED)
 async def create_new_issue(
-    session: DBSession, slug: str, data: IssueCreate, current_user: CurrentUser
+    session: DBSession,
+    slug: str,
+    data: IssueCreate,
+    current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ):
-    """Create a new issue in a project."""
+    """Create a new issue in a project. The assignee (only) is notified."""
     project = await get_project_by_slug(session, slug)
     await check_access(session, project.id, current_user.id)
-    
+    await ensure_assignee_is_member(session, project.id, data.assignee_id)
+
     issue = await create_issue(session, project.id, current_user.id, data)
-    
+    await notify_issue_assigned(session, background_tasks, issue, current_user)
+
     # Audit log
     await log_activity(
         session,
@@ -70,16 +77,27 @@ async def get_issue(session: DBSession, issue_id: uuid.UUID, current_user: Curre
 
 @router.patch("/issues/{issue_id}", response_model=IssueRead)
 async def update_issue_details(
-    session: DBSession, issue_id: uuid.UUID, data: IssueUpdate, current_user: CurrentUser
+    session: DBSession,
+    issue_id: uuid.UUID,
+    data: IssueUpdate,
+    current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
 ):
-    """Update issue details (implements optimistic locking: 409 conflict if version is outdated)."""
+    """Update issue details (implements optimistic locking: 409 conflict if version is outdated).
+
+    If the assignee changes, the new assignee (only) is notified.
+    """
     # Check access before updating
     existing = await get_issue_by_id(session, issue_id)
     await check_access(session, existing.project_id, current_user.id)
-    
+    await ensure_assignee_is_member(session, existing.project_id, data.assignee_id)
+    previous_assignee_id = existing.assignee_id
+
     # Perform update (raises 409 if version mismatch)
     issue = await update_issue(session, issue_id, data)
-    
+    if issue.assignee_id != previous_assignee_id:
+        await notify_issue_assigned(session, background_tasks, issue, current_user)
+
     # Audit log
     await log_activity(
         session,

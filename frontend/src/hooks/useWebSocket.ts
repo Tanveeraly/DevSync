@@ -1,5 +1,19 @@
 import { useEffect, useRef, useCallback } from 'react';
 
+/** Base ws(s):// origin of the backend. */
+export function getWsOrigin(): string {
+  // In production the HTTP API is proxied through Vercel, but Vercel cannot proxy
+  // WebSockets, so NEXT_PUBLIC_WS_URL points straight at the backend (e.g. wss://api.example.com).
+  const wsBase = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/$/, '');
+  if (wsBase) return wsBase;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+  const host = apiBase.startsWith('http')
+    ? apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
+    : '127.0.0.1:8000';
+  return `${protocol}//${host}`;
+}
+
 interface UseWebSocketOptions {
   projectId: string;
   onEvent?: (event: string, payload: any) => void;
@@ -19,21 +33,7 @@ export function useWebSocket({ projectId, onEvent }: UseWebSocketOptions) {
       wsRef.current.close();
     }
 
-    // In production the HTTP API is proxied through Vercel, but Vercel cannot proxy
-    // WebSockets, so NEXT_PUBLIC_WS_URL points straight at the backend (e.g. wss://api.example.com).
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL?.replace(/\/$/, '');
-    let origin: string;
-    if (wsBase) {
-      origin = wsBase;
-    } else {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
-      const host = apiBase.startsWith('http')
-        ? apiBase.replace(/^https?:\/\//, '').replace(/\/api\/v1$/, '')
-        : '127.0.0.1:8000';
-      origin = `${protocol}//${host}`;
-    }
-    const wsUrl = `${origin}/api/v1/ws/${projectId}?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${getWsOrigin()}/api/v1/ws/${projectId}?token=${encodeURIComponent(token)}`;
 
     const socket = new WebSocket(wsUrl);
     wsRef.current = socket;

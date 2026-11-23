@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { 
   Layers, 
   RefreshCw, 
@@ -24,6 +24,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 
 export default function Board() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const projectSlug = params?.projectId as string;
 
   const [loading, setLoading] = useState(true);
@@ -191,6 +192,18 @@ export default function Board() {
       setSelectedIssue(null);
     }
   };
+
+  // Open the task linked from a notification or email (?issue=<id>), once.
+  const focusIssueId = searchParams?.get('issue');
+  const handledFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusIssueId || loading || handledFocusRef.current === focusIssueId) return;
+    const target = columns.flatMap((c) => c.issues).find((i) => i.id === focusIssueId);
+    if (!target) return;
+    handledFocusRef.current = focusIssueId;
+    handleCardClick(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusIssueId, loading, columns]);
 
   const handleDragEnd = async (result: DropResult) => {
     const { source, destination, draggableId } = result;

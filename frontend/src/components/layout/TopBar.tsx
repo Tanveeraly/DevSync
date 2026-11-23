@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Search, Bell, Circle, Moon, Sun, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Circle, Moon, Sun, LogOut, User as UserIcon } from 'lucide-react';
 import { GithubIcon as Github } from '@/components/ui/icons';
+import NotificationBell from './NotificationBell';
 
 interface TopBarProps {
   title?: string;
@@ -87,10 +88,7 @@ export default function TopBar({ title, user }: TopBarProps) {
         </a>
 
         {/* Notifications */}
-        <button className="relative rounded-lg p-2 text-[var(--muted)] transition-colors hover:bg-[var(--surface-muted)] hover:text-[var(--foreground)]">
-          <Bell size={18} />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-500" />
-        </button>
+        <NotificationBell />
 
         {/* Logout Button */}
         <button 
