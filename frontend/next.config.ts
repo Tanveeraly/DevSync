@@ -2,7 +2,17 @@ import type { NextConfig } from "next";
 
 // Where /api/v1/* is proxied to. Set BACKEND_URL in Vercel (e.g. https://api.13-234-10-20.sslip.io).
 // Proxying keeps auth cookies first-party on the frontend domain.
-const backendUrl = (process.env.BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const backendUrl = (process.env.BACKEND_URL || "http://127.0.0.1:8000")
+  .trim()
+  .replace(/^["']|["']$/g, "")
+  .replace(/\/+$/, "");
+
+if (!/^https?:\/\//.test(backendUrl)) {
+  throw new Error(
+    `BACKEND_URL must be a full URL starting with https:// (or http://), e.g. https://api.example.com. ` +
+      `Fix it in Vercel → Settings → Environment Variables.`,
+  );
+}
 
 const nextConfig: NextConfig = {
   async rewrites() {
