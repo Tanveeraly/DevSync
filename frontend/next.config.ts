@@ -7,6 +7,13 @@ const backendUrl = (process.env.BACKEND_URL || "http://127.0.0.1:8000")
   .replace(/^["']|["']$/g, "")
   .replace(/\/+$/, "");
 
+if (backendUrl.includes("SENSITIVE")) {
+  throw new Error(
+    `BACKEND_URL is marked "Sensitive" in Vercel, so builds run outside Vercel (vercel pull/build in CI) ` +
+      `only receive a placeholder. Delete it and re-add it with "Sensitive" turned off.`,
+  );
+}
+
 if (!/^https?:\/\//.test(backendUrl)) {
   throw new Error(
     `BACKEND_URL must be a full URL starting with https:// (or http://), e.g. https://api.example.com. ` +
